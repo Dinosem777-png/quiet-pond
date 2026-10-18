@@ -6,138 +6,653 @@
   <meta name="theme-color" content="#102b31">
   <title>Тихая заводь</title>
   <style>
-    *{box-sizing:border-box}
-    body{margin:0;background:#102b31;color:#eff8e8;font:16px system-ui,sans-serif}
-    main{max-width:560px;margin:auto;padding:20px 16px}
-    h1{margin:4px 0;font-size:34px}
-    h2{font-size:18px;margin:0 0 12px}
-    .muted{color:#adc7bd;font-size:13px}
-    .stats,.places{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-    .card,.stat{background:#193b40;border:1px solid #ffffff1c;border-radius:16px;padding:15px;margin:12px 0}
-    .stat{margin:0;padding:12px 8px;text-align:center}
-    .place{padding:12px 5px;background:#20484b;color:#eff8e8;border:1px solid #ffffff22;border-radius:12px}
-    .place.active{border-color:#a7d66f}
-    button,select{font:inherit}
-    button{cursor:pointer}
-    .pond{min-height:170px;background:linear-gradient(#376c66,#183f43);border-radius:14px;display:grid;place-content:center;text-align:center;margin-bottom:12px}
-    #emoji{font-size:48px}
-    #status{font-weight:800;margin-top:6px}
-    select{width:100%;padding:11px;border-radius:10px;background:#102b31;color:white;border:1px solid #ffffff33}
-    .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .action{width:100%;padding:14px;margin-top:12px;background:#a7d66f;border:0;border-radius:12px;color:#183020;font-weight:800}
-    .secondary{background:#315c53;color:white}
-    button:disabled{opacity:.5}
-    .fish{display:inline-block;margin:3px;padding:7px 10px;background:#20484b;border-radius:20px;font-size:13px}
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #102b31;
+      color: #eff8e8;
+      font: 16px system-ui, sans-serif;
+    }
+
+    main {
+      max-width: 620px;
+      margin: auto;
+      padding: 20px 16px 40px;
+    }
+
+    h1 { margin: 4px 0; font-size: 34px; }
+    h2 { margin: 0 0 12px; font-size: 18px; }
+    p { line-height: 1.45; }
+
+    button, select { font: inherit; }
+    button { cursor: pointer; }
+
+    .muted { color: #adc7bd; font-size: 13px; }
+    .card, .stat {
+      background: #193b40;
+      border: 1px solid #ffffff1c;
+      border-radius: 16px;
+      padding: 15px;
+      margin: 12px 0;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin: 16px 0;
+    }
+
+    .stat {
+      margin: 0;
+      padding: 12px 6px;
+      text-align: center;
+      font-size: 13px;
+    }
+
+    .stat b { font-size: 18px; }
+
+    .places {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .place {
+      min-height: 74px;
+      padding: 10px 5px;
+      background: #20484b;
+      color: #eff8e8;
+      border: 1px solid #ffffff22;
+      border-radius: 12px;
+    }
+
+    .place.active { border-color: #a7d66f; }
+    .place:disabled { cursor: not-allowed; opacity: .5; }
+
+    .place-icon { display: block; font-size: 22px; }
+    .place-name { display: block; margin-top: 4px; font-size: 12px; }
+
+    .pond {
+      position: relative;
+      min-height: 190px;
+      overflow: hidden;
+      display: grid;
+      place-content: center;
+      text-align: center;
+      margin-bottom: 12px;
+      border-radius: 14px;
+      background: linear-gradient(#5e9b82 0%, #39776f 48%, #183f43 100%);
+      transition: background 1.5s;
+    }
+
+    .pond::before, .pond::after {
+      content: "";
+      position: absolute;
+      left: -20%;
+      width: 140%;
+      height: 34px;
+      border-top: 2px solid #d1f1c333;
+      border-radius: 50%;
+      animation: waves 5s linear infinite;
+    }
+
+    .pond::before { top: 56%; }
+    .pond::after {
+      top: 73%;
+      animation-duration: 7s;
+      animation-direction: reverse;
+    }
+
+    .pond.night {
+      background: linear-gradient(#172b48 0%, #244e62 52%, #102f3a 100%);
+    }
+
+    .pond.night::before, .pond.night::after { border-color: #c6e5ff2b; }
+
+    .scenery {
+      position: absolute;
+      inset: 8px 12px auto;
+      display: flex;
+      justify-content: space-between;
+      font-size: 26px;
+      opacity: .85;
+      pointer-events: none;
+    }
+
+    #emoji, #status, #hint, #bobber {
+      position: relative;
+      z-index: 1;
+    }
+
+    #emoji { font-size: 39px; margin-top: 18px; }
+    #status { margin-top: 5px; font-weight: 800; }
+    #hint { max-width: 90%; margin: 4px auto 0; }
+
+    #bobber {
+      position: absolute;
+      left: 50%;
+      top: 54%;
+      display: none;
+      font-size: 25px;
+      transform: translateX(-50%);
+    }
+
+    #bobber.visible { display: block; animation: bob 1.5s ease-in-out infinite; }
+    #bobber.bite { animation: bite .22s ease-in-out infinite alternate; }
+
+    @keyframes waves {
+      from { transform: translateX(-8%); }
+      to { transform: translateX(8%); }
+    }
+
+    @keyframes bob {
+      0%, 100% { margin-top: 0; }
+      50% { margin-top: 5px; }
+    }
+
+    @keyframes bite {
+      from { margin-top: 0; }
+      to { margin-top: 13px; }
+    }
+
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    select {
+      width: 100%;
+      padding: 11px;
+      border-radius: 10px;
+      background: #102b31;
+      color: white;
+      border: 1px solid #ffffff33;
+    }
+
+    .action {
+      width: 100%;
+      padding: 13px;
+      margin-top: 12px;
+      background: #a7d66f;
+      border: 0;
+      border-radius: 12px;
+      color: #183020;
+      font-weight: 800;
+    }    .secondary { background: #315c53; color: white; }
+    .action:disabled { cursor: not-allowed; opacity: .5; }
+
+    .shop-item, .keep-row, .fish {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin: 7px 0;
+      padding: 9px 10px;
+      background: #20484b;
+      border-radius: 10px;
+    }
+
+    .shop-item button {
+      padding: 7px 10px;
+      background: #a7d66f;
+      color: #183020;
+      border: 0;
+      border-radius: 8px;
+      font-weight: 700;
+    }
+
+    .shop-item button:disabled { opacity: .5; }
+    .fish { display: inline-block; font-size: 13px; border-radius: 20px; }
+    .notice { min-height: 20px; margin: 8px 0 0; color: #d2e9a4; font-size: 13px; }
+    .small-button { padding: 10px; }
+
+    @media (max-width: 390px) {
+      .places { grid-template-columns: 1fr; }
+      .place { min-height: 54px; }
+      .place-icon { display: inline; margin-right: 6px; }
+      .place-name { display: inline; }
+    }
   </style>
 </head>
 <body>
 <main>
   <p class="muted">РЫБОЛОВНОЕ ПРИКЛЮЧЕНИЕ</p>
   <h1>Тихая заводь</h1>
-  <p class="muted">Найди своё место у воды.</p>
+  <p class="muted">Выбирай место, следи за поплавком и собирай улов.</p>
 
   <section class="stats">
     <div class="stat">Уровень<br><b id="level">1</b></div>
     <div class="stat">Монеты<br><b id="coins">60</b> 🪙</div>
-    <div class="stat">Улов<br><b id="total">0</b> 🐟</div>
+    <div class="stat">Рейтинг<br><b id="rating">0</b> ⭐</div>
   </section>
 
   <section class="card">
     <h2>Выбери место</h2>
     <div class="places" id="places"></div>
+    <p class="muted" id="spotInfo"></p>
   </section>
 
   <section class="card">
-    <div class="pond">
+    <div class="pond" id="pond">
+      <div class="scenery"><span id="leftScenery">🌿</span><span id="rightScenery">🌳</span></div>
       <div id="emoji">🌿</div>
       <div id="status">Забрось удочку</div>
       <div class="muted" id="hint">Выбери наживку и жди поклёвки.</div>
+      <div id="bobber">🔴</div>
     </div>
+
     <div class="row">
       <label class="muted">Наживка
-        <select id="bait">
-          <option value="Червь">Червь</option>
-          <option value="Зерно">Зерно</option>
-          <option value="Блесна">Блесна</option>
-        </select>
+        <select id="bait"></select>
       </label>
       <div class="muted">Удочка<br><b id="rod">Уровень 1</b></div>
     </div>
+
     <button class="action" id="cast">Забросить удочку</button>
+    <button class="action secondary" id="sonar">📡 Использовать эхолот</button>
+    <p class="muted" id="sonarInfo"></p>
+    <p class="notice" id="notice"></p>
   </section>
 
   <section class="card">
-    <h2>Улучшение удочки</h2>
-    <p class="muted">Уменьшает шанс упустить рыбу.</p>
-    <button class="action secondary" id="upgrade">Улучшить за 80 🪙</button>
+    <h2>Время на водоёме</h2>
+    <p>🕒 <b id="clock">08:00</b> · <span id="period">День</span></p>
+    <p class="muted">Время идёт само: ночью попадаются особые рыбы.</p>
   </section>
 
   <section class="card">
-    <h2>Твоя коллекция</h2>
+    <h2>Садок <span class="muted" id="keepCount"></span></h2>
+    <div id="keepnet" class="muted">Садок пока пуст.</div>
+    <button class="action secondary" id="sell">Продать весь улов</button>
+  </section>
+
+  <section class="card">
+    <h2>Рынок снастей</h2>
+    <div id="market"></div>
+  </section>
+
+  <section class="card">
+    <h2>Рейтинг рыболова</h2>
+    <p>Очки: <b id="ratingDetail">0</b> ⭐</p>
+    <p class="muted" id="rankText"></p>
+    <p class="muted">Рекорд улова: <b id="record">пока нет</b></p>
+  </section>
+
+  <section class="card">
+    <h2>Коллекция</h2>
     <div id="collection" class="muted">Пока рыб нет.</div>
   </section>
 </main>
 
 <script>
-const spots=[
-  {name:"Луговой пруд",emoji:"🌿",level:1,fish:[["Карась",12],["Плотва",9],["Линь",20],["Золотой карась",42]]},
-  {name:"Сосновая река",emoji:"🌲",level:2,fish:[["Голавль",20],["Язь",23],["Щука",31],["Серебряный язь",55]]},
-  {name:"Синее озеро",emoji:"⛰️",level:4,fish:[["Окунь",18],["Судак",34],["Большой лещ",29],["Лунный судак",72]]}
+const spots = [
+  {
+    name: "Луговой пруд", emoji: "🌿", level: 1,
+    scenery: ["🌾", "🌳"],
+    fish: [
+      { name: "Карась", min: .3, max: 1.6, price: 12, rarity: 1, bait: ["Червь", "Зерно"] },
+      { name: "Плотва", min: .2, max: 1.1, price: 10, rarity: 1, bait: ["Червь", "Зерно"] },
+      { name: "Линь", min: .7, max: 3.2, price: 20, rarity: 2, bait: ["Червь"] },
+      { name: "Золотой карась", min: .5, max: 2, price: 42, rarity: 4, bait: ["Зерно"], dayOnly: true },
+      { name: "Ночной угорь", min: 1, max: 4, price: 38, rarity: 3, bait: ["Червь"], nightOnly: true }
+    ]
+  },
+  {
+    name: "Сосновая река", emoji: "🌲", level: 2,
+    scenery: ["🌲", "🏞️"],
+    fish: [
+      { name: "Голавль", min: .5, max: 2.8, price: 20, rarity: 2, bait: ["Блесна", "Червь"] },
+      { name: "Язь", min: .7, max: 3.5, price: 23, rarity: 2, bait: ["Зерно", "Червь"] },      { name: "Щука", min: 1, max: 7, price: 31, rarity: 3, bait: ["Блесна"] },
+      { name: "Серебряный язь", min: 1, max: 4, price: 55, rarity: 5, bait: ["Зерно"], dayOnly: true },
+      { name: "Речной сом", min: 3, max: 12, price: 47, rarity: 4, bait: ["Червь"], nightOnly: true }
+    ]
+  },
+  {
+    name: "Синее озеро", emoji: "⛰️", level: 4,
+    scenery: ["⛰️", "🌲"],
+    fish: [
+      { name: "Окунь", min: .3, max: 2.4, price: 18, rarity: 1, bait: ["Блесна", "Червь"] },
+      { name: "Судак", min: 1, max: 6, price: 34, rarity: 3, bait: ["Блесна"] },
+      { name: "Большой лещ", min: 1, max: 5, price: 29, rarity: 2, bait: ["Зерно", "Червь"] },
+      { name: "Лунный судак", min: 2, max: 8, price: 72, rarity: 6, bait: ["Блесна"], nightOnly: true },
+      { name: "Радужная форель", min: 1, max: 5, price: 62, rarity: 5, bait: ["Блесна"], dayOnly: true }
+    ]
+  }
 ];
+
+const defaults = {
+  coins: 60,
+  xp: 0,
+  total: 0,
+  rod: 1,
+  spot: 0,
+  rating: 0,
+  sonar: 3,
+  gameMinutes: 480,
+  catches: {},
+  baits: { "Червь": 10, "Зерно": 5, "Блесна": 3 },
+  keepnet: [],
+  record: null
+};
+
 let data;
-try{data=JSON.parse(localStorage.getItem("quiet-pond-save"))||{};}catch{data={};}
-data={coins:60,xp:0,total:0,rod:1,spot:0,catches:{},...data};
-let phase="idle",timer;
-const $=id=>document.getElementById(id);
-const level=()=>Math.floor(data.xp/100)+1;
-function save(){localStorage.setItem("quiet-pond-save",JSON.stringify(data));}
-function draw(){
-  $("level").textContent=level();
-  $("coins").textContent=data.coins;
-  $("total").textContent=data.total;
-  $("rod").textContent="Уровень "+data.rod;  $("places").innerHTML=spots.map((s,i)=>`<button class="place ${data.spot===i?"active":""}" data-i="${i}" ${level()<s.level||phase!=="idle"?"disabled":""}>${s.emoji}<br>${s.name}<br><small>${level()<s.level?"🔒 Ур. "+s.level:"Открыто"}</small></button>`).join("");
-  $("upgrade").textContent=data.rod>=5?"Максимальный уровень":`Улучшить за ${data.rod*80} 🪙`;
-  $("upgrade").disabled=data.rod>=5||data.coins<data.rod*80||phase!=="idle";
-  $("collection").innerHTML=Object.keys(data.catches).length
-    ?Object.entries(data.catches).map(([n,c])=>`<span class="fish">🐟 ${n} ×${c}</span>`).join("")
-    :"Пока рыб нет.";
-  $("cast").disabled=phase==="waiting";
-  $("cast").textContent=phase==="waiting"?"Ждём поклёвку…":phase==="bite"?"Подсечь!":"Забросить удочку";
+try {
+  data = { ...defaults, ...JSON.parse(localStorage.getItem("quiet-pond-save")) };
+} catch {
+  data = { ...defaults };
 }
-function resetPond(message="Забрось удочку",hint="Выбери наживку и жди поклёвки.",emoji=spots[data.spot].emoji){
-  $("status").textContent=message;$("hint").textContent=hint;$("emoji").textContent=emoji;
+data.catches = data.catches || {};
+data.baits = { ...defaults.baits, ...(data.baits || {}) };
+data.keepnet = Array.isArray(data.keepnet) ? data.keepnet : [];
+data.sonar = Number.isFinite(data.sonar) ? data.sonar : 3;
+
+let phase = "idle";
+let biteTimer = null;
+let currentFish = null;
+let castTimeout = null;
+
+const $ = id => document.getElementById(id);
+const level = () => Math.floor(data.xp / 100) + 1;
+const currentSpot = () => spots[data.spot];
+const isNight = () => {
+  const hour = Math.floor((data.gameMinutes % 1440) / 60);
+  return hour < 6 || hour >= 18;
+};
+
+function save() {
+  localStorage.setItem("quiet-pond-save", JSON.stringify(data));
 }
-$("places").addEventListener("click",e=>{
-  const b=e.target.closest("[data-i]");if(!b||phase!=="idle")return;
-  data.spot=Number(b.dataset.i);save();draw();resetPond();
-});
-$("cast").addEventListener("click",()=>{
-  if(phase==="bite"){
-    clearTimeout(timer);
-    const fish=spots[data.spot].fish[Math.floor(Math.random()*spots[data.spot].fish.length)];
-    if(Math.random()<Math.max(.04,.18-data.rod*.03)){
-      phase="idle";resetPond("Рыба сорвалась!","Попробуй ещё раз.");draw();return;
-    }
-    const reward=fish[1],xp=15;
-    data.coins+=reward;data.xp+=xp;data.total++;
-    data.catches[fish[0]]=(data.catches[fish[0]]||0)+1;
-    phase="idle";save();draw();
-    resetPond("🐟 "+fish[0]+"!","Получено "+reward+" монет и "+xp+" опыта.","🐟");
+
+function formatWeight(weight) {
+  return weight.toFixed(1).replace(".", ",") + " кг";
+}
+
+function showNotice(message) {
+  $("notice").textContent = message;
+  window.clearTimeout(showNotice.timeout);
+  showNotice.timeout = window.setTimeout(() => $("notice").textContent = "", 3500);
+}
+
+function renderPlaces() {
+  $("places").innerHTML = spots.map((spot, index) => {
+    const locked = level() < spot.level;
+    return `<button class="place ${data.spot === index ? "active" : ""}"
+      data-spot="${index}" ${locked ? "disabled" : ""}>
+      <span class="place-icon">${spot.emoji}</span>
+      <span class="place-name">${spot.name}${locked ? `<br>Уровень ${spot.level}` : ""}</span>
+    </button>`;
+  }).join("");
+
+  document.querySelectorAll("[data-spot]").forEach(button => {
+    button.addEventListener("click", () => {
+      data.spot = Number(button.dataset.spot);
+      render();
+      showNotice(`Вы прибыли: ${currentSpot().name}.`);
+      save();
+    });
+  });
+}
+
+function renderBaits() {
+  const select = $("bait");
+  const previous = select.value;
+  select.innerHTML = Object.entries(data.baits)
+    .map(([name, count]) => `<option value="${name}">${name} — ${count} шт.</option>`)
+    .join("");
+
+  if (data.baits[previous] > 0) select.value = previous;
+  else {
+    const available = Object.keys(data.baits).find(name => data.baits[name] > 0);
+    if (available) select.value = available;
+  }
+}
+
+function renderKeepnet() {
+  $("keepCount").textContent = `(${data.keepnet.length}/20)`;
+  if (!data.keepnet.length) {
+    $("keepnet").innerHTML = "Садок пока пуст.";
     return;
   }
-  if(phase!=="idle")return;
-  phase="waiting";draw();resetPond("Поплавок покачивается…","Тише — рыба уже рядом.","〰️");
-  timer=setTimeout(()=>{
-    phase="bite";draw();resetPond("КЛЮЁТ!","Нажми кнопку, чтобы подсечь рыбу!","❗");
-    timer=setTimeout(()=>{if(phase==="bite"){phase="idle";draw();resetPond("Рыба уплыла…","Забрось удочку ещё раз.");}},2500);
-  },2000+Math.random()*3500);
+
+  $("keepnet").innerHTML = data.keepnet.map((fish, index) =>
+    `<div class="keep-row">
+      <span>${fish.name} · ${formatWeight(fish.weight)}</span>
+      <span>${fish.value} 🪙</span>
+    </div>`
+  ).join("");
+}
+
+function renderMarket() {
+  const nextRodCost = data.rod === 1 ? 100 : data.rod === 2 ? 220 : null;
+  const items = [
+    { name: "Червь ×5", cost: 15, action: () => data.baits["Червь"] += 5 },
+    { name: "Зерно ×5", cost: 12, action: () => data.baits["Зерно"] += 5 },
+    { name: "Блесна ×3", cost: 24, action: () => data.baits["Блесна"] += 3 },    { name: "Заряд эхолота ×3", cost: 35, action: () => data.sonar += 3 }
+  ];
+
+  if (nextRodCost) {
+    items.unshift({
+      name: `Удочка уровня ${data.rod + 1}`,
+      cost: nextRodCost,
+      action: () => {
+        data.rod++;
+        showNotice(`Куплена удочка уровня ${data.rod}!`);
+      }
+    });
+  }
+
+  $("market").innerHTML = items.map((item, index) =>
+    `<div class="shop-item">
+      <span>${item.name} <span class="muted">— ${item.cost} 🪙</span></span>
+      <button data-buy="${index}" ${data.coins < item.cost ? "disabled" : ""}>Купить</button>
+    </div>`
+  ).join("");
+
+  $("market").querySelectorAll("[data-buy]").forEach(button => {
+    button.addEventListener("click", () => {
+      const item = items[Number(button.dataset.buy)];
+      if (data.coins < item.cost) return;
+      data.coins -= item.cost;
+      item.action();
+      render();
+      save();
+    });
+  });
+
+  if (!nextRodCost) {
+    $("market").insertAdjacentHTML("beforeend",
+      `<p class="muted">Удочка максимального уровня.</p>`);
+  }
+}
+
+function render() {
+  const spot = currentSpot();
+  $("level").textContent = level();
+  $("coins").textContent = data.coins;
+  $("rating").textContent = data.rating;
+  $("ratingDetail").textContent = data.rating;
+  $("rod").textContent = `Уровень ${data.rod}`;
+  $("emoji").textContent = spot.emoji;
+  $("spotInfo").textContent = `Место ${data.spot + 1} из ${spots.length} · Требуемый уровень: ${spot.level}`;
+  $("leftScenery").textContent = spot.scenery[0];
+  $("rightScenery").textContent = spot.scenery[1];
+
+  const hour = Math.floor((data.gameMinutes % 1440) / 60);
+  const minute = data.gameMinutes % 60;
+  $("clock").textContent = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  $("period").textContent = isNight() ? "Ночь" : "День";
+  $("pond").classList.toggle("night", isNight());
+
+  $("sonarInfo").textContent = `Заряды эхолота: ${data.sonar}`;
+  $("sonar").disabled = data.sonar <= 0 || phase !== "idle";
+  $("cast").disabled = phase === "waiting" || phase === "bite";
+  $("cast").textContent = phase === "waiting" ? "Ждём поклёвку…" :
+    phase === "bite" ? "Подсекай!" : "Забросить удочку";
+  $("bobber").classList.toggle("visible", phase !== "idle");
+  $("bobber").classList.toggle("bite", phase === "bite");
+
+  const ranks = [
+    [0, "Новичок у воды"],
+    [100, "Удачливый рыболов"],
+    [350, "Опытный рыбак"],
+    [800, "Мастер заводи"],
+    [1600, "Легенда водоёмов"]
+  ];
+  const rank = ranks.filter(([score]) => data.rating >= score).at(-1);
+  $("rankText").textContent = `${rank[1]} · до следующего звания: ${
+    ranks.find(([score]) => score > data.rating)?.[0] ?? "максимум"
+  } очков`;
+  $("record").textContent = data.record
+    ? `${data.record.name}, ${formatWeight(data.record.weight)}`
+    : "пока нет";
+
+  const entries = Object.entries(data.catches);
+  $("collection").innerHTML = entries.length
+    ? entries.map(([name, count]) => `<span class="fish">${name} ×${count}</span>`).join("")
+    : "Пока рыб нет.";
+
+  renderPlaces();
+  renderBaits();
+  renderKeepnet();
+  renderMarket();
+}
+
+function eligibleFish(baitName) {
+  return currentSpot().fish.filter(fish =>
+    (!fish.dayOnly || !isNight()) &&
+    (!fish.nightOnly || isNight()) &&
+    (!baitName || fish.bait.includes(baitName))
+  );
+}
+
+function cast() {
+  if (phase !== "idle") return;
+
+  const bait = $("bait").value;
+  if (!bait || data.baits[bait] <= 0) {
+    showNotice("Наживка закончилась — загляни на рынок.");
+    return;
+  }
+
+  data.baits[bait]--;
+  phase = "waiting";
+  $("status").textContent = "Поплавок на воде";
+  $("hint").textContent = "Ветерок качает воду… следи за поплавком.";
+  render();
+  save();
+
+  castTimeout = window.setTimeout(() => {
+    if (phase !== "waiting") return;
+
+    const possibleFish = eligibleFish(bait);
+    if (!possibleFish.length) {
+      resetFishing("Сегодня эта рыба не клюёт. Попробуй другую наживку.");
+      return;
+    }
+
+    currentFish = possibleFish[Math.floor(Math.random() * possibleFish.length)];
+    phase = "bite";    $("status").textContent = "Поклёвка!";
+    $("hint").textContent = "Нажми «Подсекай!» скорее!";
+    render();
+
+    biteTimer = window.setTimeout(() => {
+      if (phase === "bite") resetFishing("Рыба сорвалась с крючка!");
+    }, 2800);
+  }, 2500 + Math.random() * 4500);
+}
+
+function reelIn() {
+  if (phase === "bite" && currentFish) {
+    window.clearTimeout(biteTimer);
+
+    const catchChance = Math.min(.96, .62 + data.rod * .1 - currentFish.rarity * .025);
+    if (Math.random() > catchChance) {
+      resetFishing("Рыба оказалась сильной и ушла!");
+      return;
+    }
+
+    if (data.keepnet.length >= 20) {
+      resetFishing("Садок полон! Продай улов, чтобы ловить дальше.");
+      return;
+    }
+
+    const fish = currentFish;
+    const weight = Math.round((fish.min + Math.random() * (fish.max - fish.min)) * 10) / 10;
+    const value = Math.max(1, Math.round(weight * fish.price));
+
+    data.keepnet.push({ name: fish.name, weight, value });
+    data.catches[fish.name] = (data.catches[fish.name] || 0) + 1;
+    data.total++;
+    data.xp += Math.max(5, Math.round(weight * 8));
+    data.rating += Math.round(value + fish.rarity * 10);
+
+    if (!data.record || weight > data.record.weight) {
+      data.record = { name: fish.name, weight };
+    }
+
+    resetFishing(`Поймана рыба: ${fish.name}, ${formatWeight(weight)}!`);
+    render();
+    save();
+    return;
+  }
+
+  if (phase === "idle") cast();
+}
+
+function resetFishing(message) {
+  window.clearTimeout(biteTimer);
+  window.clearTimeout(castTimeout);
+  phase = "idle";
+  currentFish = null;
+  $("status").textContent = "Забрось удочку";
+  $("hint").textContent = message || "Выбери наживку и жди поклёвки.";
+  render();
+}
+
+function useSonar() {
+  if (data.sonar <= 0 || phase !== "idle") return;
+  data.sonar--;
+
+  const fish = eligibleFish(null);
+  const names = [...new Set(fish.map(item => item.name))];
+  $("hint").textContent = names.length
+    ? `Эхолот заметил рыбу: ${names.slice(0, 3).join(", ")}${names.length > 3 ? "…" : ""}.`
+    : "Эхолот не обнаружил активную рыбу.";
+
+  showNotice("Эхолот просканировал воду.");
+  render();
+  save();
+}
+
+function sellCatch() {
+  if (!data.keepnet.length) {
+    showNotice("В садке пока нечего продавать.");
+    return;
+  }
+
+  const earnings = data.keepnet.reduce((sum, fish) => sum + fish.value, 0);
+  const count = data.keepnet.length;
+  data.coins += earnings;
+  data.keepnet = [];
+  render();
+  save();
+  showNotice(`Продано рыб: ${count}. Получено ${earnings} монет.`);
+}
+
+$("cast").addEventListener("click", reelIn);
+$("sonar").addEventListener("click", useSonar);
+$("sell").addEventListener("click", sellCatch);
+$("bait").addEventListener("change", () => {
+  if (phase === "idle") {
+    $("hint").textContent = `Выбрана наживка: ${$("bait").value}.`;
+  }
 });
-$("upgrade").addEventListener("click",()=>{
-  const cost=data.rod*80;
-  if(data.coins>=cost&&data.rod<5){data.coins-=cost;data.rod++;save();draw();}
-});
-$("bait").addEventListener("change",()=>{});
-draw();
+
+window.setInterval(() => {
+  data.gameMinutes = (data.gameMinutes + 10) % 1440;
+  render();
+  save();
+}, 2500);
+
+render();
 </script>
 </body>
 </html>
