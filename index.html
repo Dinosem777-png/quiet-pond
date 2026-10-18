@@ -1,658 +1,270 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#102b31">
-  <title>Тихая заводь</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Рыбалка: Симулятор</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
-    * { box-sizing: border-box; }
-
-    body {
-      margin: 0;
-      background: #102b31;
-      color: #eff8e8;
-      font: 16px system-ui, sans-serif;
-    }
-
-    main {
-      max-width: 620px;
-      margin: auto;
-      padding: 20px 16px 40px;
-    }
-
-    h1 { margin: 4px 0; font-size: 34px; }
-    h2 { margin: 0 0 12px; font-size: 18px; }
-    p { line-height: 1.45; }
-
-    button, select { font: inherit; }
-    button { cursor: pointer; }
-
-    .muted { color: #adc7bd; font-size: 13px; }
-    .card, .stat {
-      background: #193b40;
-      border: 1px solid #ffffff1c;
-      border-radius: 16px;
-      padding: 15px;
-      margin: 12px 0;
-    }
-
-    .stats {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-      margin: 16px 0;
-    }
-
-    .stat {
-      margin: 0;
-      padding: 12px 6px;
-      text-align: center;
-      font-size: 13px;
-    }
-
-    .stat b { font-size: 18px; }
-
-    .places {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-    }
-
-    .place {
-      min-height: 74px;
-      padding: 10px 5px;
-      background: #20484b;
-      color: #eff8e8;
-      border: 1px solid #ffffff22;
-      border-radius: 12px;
-    }
-
-    .place.active { border-color: #a7d66f; }
-    .place:disabled { cursor: not-allowed; opacity: .5; }
-
-    .place-icon { display: block; font-size: 22px; }
-    .place-name { display: block; margin-top: 4px; font-size: 12px; }
-
-    .pond {
-      position: relative;
-      min-height: 190px;
-      overflow: hidden;
-      display: grid;
-      place-content: center;
-      text-align: center;
-      margin-bottom: 12px;
-      border-radius: 14px;
-      background: linear-gradient(#5e9b82 0%, #39776f 48%, #183f43 100%);
-      transition: background 1.5s;
-    }
-
-    .pond::before, .pond::after {
-      content: "";
-      position: absolute;
-      left: -20%;
-      width: 140%;
-      height: 34px;
-      border-top: 2px solid #d1f1c333;
-      border-radius: 50%;
-      animation: waves 5s linear infinite;
-    }
-
-    .pond::before { top: 56%; }
-    .pond::after {
-      top: 73%;
-      animation-duration: 7s;
-      animation-direction: reverse;
-    }
-
-    .pond.night {
-      background: linear-gradient(#172b48 0%, #244e62 52%, #102f3a 100%);
-    }
-
-    .pond.night::before, .pond.night::after { border-color: #c6e5ff2b; }
-
-    .scenery {
-      position: absolute;
-      inset: 8px 12px auto;
-      display: flex;
-      justify-content: space-between;
-      font-size: 26px;
-      opacity: .85;
-      pointer-events: none;
-    }
-
-    #emoji, #status, #hint, #bobber {
-      position: relative;
-      z-index: 1;
-    }
-
-    #emoji { font-size: 39px; margin-top: 18px; }
-    #status { margin-top: 5px; font-weight: 800; }
-    #hint { max-width: 90%; margin: 4px auto 0; }
-
-    #bobber {
-      position: absolute;
-      left: 50%;
-      top: 54%;
-      display: none;
-      font-size: 25px;
-      transform: translateX(-50%);
-    }
-
-    #bobber.visible { display: block; animation: bob 1.5s ease-in-out infinite; }
-    #bobber.bite { animation: bite .22s ease-in-out infinite alternate; }
-
-    @keyframes waves {
-      from { transform: translateX(-8%); }
-      to { transform: translateX(8%); }
-    }
-
-    @keyframes bob {
-      0%, 100% { margin-top: 0; }
-      50% { margin-top: 5px; }
-    }
-
-    @keyframes bite {
-      from { margin-top: 0; }
-      to { margin-top: 13px; }
-    }
-
-    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    select {
-      width: 100%;
-      padding: 11px;
-      border-radius: 10px;
-      background: #102b31;
-      color: white;
-      border: 1px solid #ffffff33;
-    }
-
-    .action {
-      width: 100%;
-      padding: 13px;
-      margin-top: 12px;
-      background: #a7d66f;
-      border: 0;
-      border-radius: 12px;
-      color: #183020;
-      font-weight: 800;
-    }    .secondary { background: #315c53; color: white; }
-    .action:disabled { cursor: not-allowed; opacity: .5; }
-
-    .shop-item, .keep-row, .fish {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 8px;
-      margin: 7px 0;
-      padding: 9px 10px;
-      background: #20484b;
-      border-radius: 10px;
-    }
-
-    .shop-item button {
-      padding: 7px 10px;
-      background: #a7d66f;
-      color: #183020;
-      border: 0;
-      border-radius: 8px;
-      font-weight: 700;
-    }
-
-    .shop-item button:disabled { opacity: .5; }
-    .fish { display: inline-block; font-size: 13px; border-radius: 20px; }
-    .notice { min-height: 20px; margin: 8px 0 0; color: #d2e9a4; font-size: 13px; }
-    .small-button { padding: 10px; }
-
-    @media (max-width: 390px) {
-      .places { grid-template-columns: 1fr; }
-      .place { min-height: 54px; }
-      .place-icon { display: inline; margin-right: 6px; }
-      .place-name { display: inline; }
-    }
+    :root { --bg: #1a1a2e; --panel: #16213e; --accent: #e94560; --gold: #ffd700; --green: #4ade80; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: #fff; margin: 0; padding: 8px; }
+    h1, h2, h3 { margin: 0 0 8px 0; text-align: center; }
+    .container { max-width: 500px; margin: 0 auto; }
+    .card { background: var(--panel); padding: 14px; border-radius: 12px; margin-bottom: 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+    button { width: 100%; padding: 14px; background: var(--accent); color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 6px; }
+    button:active { opacity: 0.85; }
+    button.green { background: var(--green); }
+    select, input[type="range"] { width: 100%; margin-top: 8px; }
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+    .stat-box { background: rgba(255,255,255,0.08); padding: 8px; border-radius: 8px; text-align: center; font-size: 13px; }
+    .stat-val { font-weight: bold; color: var(--gold); }
+    #log { margin-top: 10px; line-height: 1.4; color: #c0c0c0; min-height: 120px; max-height: 240px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1); padding: 8px; border-radius: 8px; }
+    .log-line { margin-bottom: 4px; display: block; }
+    .highlight { color: var(--gold); font-weight: bold; }
+    .fish-img-slot { text-align: center; margin: 10px 0; min-height: 120px; color: #555; font-style: italic; }
+    /* Заглушка под фон водоёма */
+    .bg-placeholder { height: 180px; background: linear-gradient(180deg, #0f172a 0%, #1a1a2e 100%); border-radius: 12px; position: relative; display: flex; align-items: center; justify-content: center; color: #333; margin-bottom: 10px; }
   </style>
 </head>
 <body>
-<main>
-  <p class="muted">РЫБОЛОВНОЕ ПРИКЛЮЧЕНИЕ</p>
-  <h1>Тихая заводь</h1>
-  <p class="muted">Выбирай место, следи за поплавком и собирай улов.</p>
+  <div class="container">
+    <h1>🎣 Рыбалка: Симулятор</h1>
 
-  <section class="stats">
-    <div class="stat">Уровень<br><b id="level">1</b></div>
-    <div class="stat">Монеты<br><b id="coins">60</b> 🪙</div>
-    <div class="stat">Рейтинг<br><b id="rating">0</b> ⭐</div>
-  </section>
-
-  <section class="card">
-    <h2>Выбери место</h2>
-    <div class="places" id="places"></div>
-    <p class="muted" id="spotInfo"></p>
-  </section>
-
-  <section class="card">
-    <div class="pond" id="pond">
-      <div class="scenery"><span id="leftScenery">🌿</span><span id="rightScenery">🌳</span></div>
-      <div id="emoji">🌿</div>
-      <div id="status">Забрось удочку</div>
-      <div class="muted" id="hint">Выбери наживку и жди поклёвки.</div>
-      <div id="bobber">🔴</div>
+    <!-- Панель погоды -->
+    <div class="card">
+      <h3>🌦 Погода и время</h3>
+      <select id="weather" onchange="updateWeather()">
+        <option value="clear">Ясно (обычный клёв)</option>
+        <option value="rain">Дождь (крупная рыба, реже клюёт)</option>
+        <option value="wind">Ветер (заброс сложнее, рыба активнее)</option>
+      </select>
+      <div style="margin-top:8px; font-size:13px;">
+        Бонус/штраф к шансу поимки: <span id="weather-bonus" class="highlight">0%</span>
+      </div>
     </div>
 
-    <div class="row">
-      <label class="muted">Наживка
-        <select id="bait"></select>
-      </label>
-      <div class="muted">Удочка<br><b id="rod">Уровень 1</b></div>
+    <!-- Статистика и прогресс -->
+    <div class="card">
+      <h3>📊 Прогресс и инвентарь</h3>
+      <div class="stats-grid">
+        <div class="stat-box">Опыт: <span id="xp-val" class="stat-val">0</span></div>
+        <div class="stat-box">Уровень: <span id="lvl-val" class="stat-val">1</span></div>
+        <div class="stat-box">Деньги: <span id="money-val" class="stat-val">0 ₽</span></div>
+        <div class="stat-box">Приманки: <span id="bait-val" class="stat-val">5</span></div>
+      </div>
+      <div style="margin-top:10px;">
+        <h4>Инвентарь снастей</h4>
+        <select id="rod-select" onchange="selectRod()" style="width:100%;"></select>
+        <p style="font-size:12px; color:#aaa; margin-top:6px;">Выбранная удочка влияет на дальность и шанс подсечки.</p>
+      </div>
     </div>
 
-    <button class="action" id="cast">Забросить удочку</button>
-    <button class="action secondary" id="sonar">📡 Использовать эхолот</button>
-    <p class="muted" id="sonarInfo"></p>
-    <p class="notice" id="notice"></p>
-  </section>
+    <!-- Фон водоёма (сюда можно вставить картинку) -->
+    <div class="bg-placeholder">
+      <!-- Сюда можно вставить фотореалистичный фон: река/озеро -->
+      <span>Фон водоёма (замените на картинку)</span>
+    </div>
 
-  <section class="card">
-    <h2>Время на водоёме</h2>
-    <p>🕒 <b id="clock">08:00</b> · <span id="period">День</span></p>
-    <p class="muted">Время идёт само: ночью попадаются особые рыбы.</p>
-  </section>
+    <!-- Механика заброса и подсечки -->
+    <div class="card">
+      <h3>🎣 Локация и заброс</h3>
+      <select id="location">
+        <option value="shallow">Мелководье (мелкая рыба)</option>
+        <option value="deep">Глубина (крупная, сложнее)</option>
+        <option value="reeds">Заросли (редкие виды, риск зацепа)</option>
+      </select>
 
-  <section class="card">
-    <h2>Садок <span class="muted" id="keepCount"></span></h2>
-    <div id="keepnet" class="muted">Садок пока пуст.</div>
-    <button class="action secondary" id="sell">Продать весь улов</button>
-  </section>
+      <label style="display:block; margin-top:10px;">Сила заброса (дальность):</label>
+      <input type="range" id="cast-power" min="1" max="10" value="5" oninput="updateCastPower()">
+      <div style="text-align:center; font-size:12px; color:#888;">Мощность: <span id="power-display">5</span>/10</div>
 
-  <section class="card">
-    <h2>Рынок снастей</h2>
-    <div id="market"></div>
-  </section>
+      <button onclick="makeCast()">🎣 Сделать заброс</button>
+      <button id="hook-btn" class="green" style="display:none;" onclick="tryHook()">⚡ ПОДСЕЧЬ СЕЙЧАС!</button>
+    </div>
 
-  <section class="card">
-    <h2>Рейтинг рыболова</h2>
-    <p>Очки: <b id="ratingDetail">0</b> ⭐</p>
-    <p class="muted" id="rankText"></p>
-    <p class="muted">Рекорд улова: <b id="record">пока нет</b></p>
-  </section>
+    <div id="log"></div>
+  </div>
 
-  <section class="card">
-    <h2>Коллекция</h2>
-    <div id="collection" class="muted">Пока рыб нет.</div>
-  </section>
-</main>
+  <script>
+    const tg = window.Telegram.WebApp;
+    tg.ready();
 
-<script>
-const spots = [
-  {
-    name: "Луговой пруд", emoji: "🌿", level: 1,
-    scenery: ["🌾", "🌳"],
-    fish: [
-      { name: "Карась", min: .3, max: 1.6, price: 12, rarity: 1, bait: ["Червь", "Зерно"] },
-      { name: "Плотва", min: .2, max: 1.1, price: 10, rarity: 1, bait: ["Червь", "Зерно"] },
-      { name: "Линь", min: .7, max: 3.2, price: 20, rarity: 2, bait: ["Червь"] },
-      { name: "Золотой карась", min: .5, max: 2, price: 42, rarity: 4, bait: ["Зерно"], dayOnly: true },
-      { name: "Ночной угорь", min: 1, max: 4, price: 38, rarity: 3, bait: ["Червь"], nightOnly: true }
-    ]
-  },
-  {
-    name: "Сосновая река", emoji: "🌲", level: 2,
-    scenery: ["🌲", "🏞️"],
-    fish: [
-      { name: "Голавль", min: .5, max: 2.8, price: 20, rarity: 2, bait: ["Блесна", "Червь"] },
-      { name: "Язь", min: .7, max: 3.5, price: 23, rarity: 2, bait: ["Зерно", "Червь"] },      { name: "Щука", min: 1, max: 7, price: 31, rarity: 3, bait: ["Блесна"] },
-      { name: "Серебряный язь", min: 1, max: 4, price: 55, rarity: 5, bait: ["Зерно"], dayOnly: true },
-      { name: "Речной сом", min: 3, max: 12, price: 47, rarity: 4, bait: ["Червь"], nightOnly: true }
-    ]
-  },
-  {
-    name: "Синее озеро", emoji: "⛰️", level: 4,
-    scenery: ["⛰️", "🌲"],
-    fish: [
-      { name: "Окунь", min: .3, max: 2.4, price: 18, rarity: 1, bait: ["Блесна", "Червь"] },
-      { name: "Судак", min: 1, max: 6, price: 34, rarity: 3, bait: ["Блесна"] },
-      { name: "Большой лещ", min: 1, max: 5, price: 29, rarity: 2, bait: ["Зерно", "Червь"] },
-      { name: "Лунный судак", min: 2, max: 8, price: 72, rarity: 6, bait: ["Блесна"], nightOnly: true },
-      { name: "Радужная форель", min: 1, max: 5, price: 62, rarity: 5, bait: ["Блесна"], dayOnly: true }
-    ]
-  }
-];
+    // Конфигурация: удочки (прокачка)
+    const rods = [
+      { id: 'light', name: 'Лёгкая удочка', power: 4, castDist: 12, hookChance: 0.7, cost: 0 },
+      { id: 'medium', name: 'Средняя удочка', power: 6, castDist: 18, hookChance: 0.6, cost: 500 },
+      { id: 'heavy', name: 'Тяжёлая удочка', power: 8, castDist: 24, hookChance: 0.5, cost: 1500 }
+    ];
 
-const defaults = {
-  coins: 60,
-  xp: 0,
-  total: 0,
-  rod: 1,
-  spot: 0,
-  rating: 0,
-  sonar: 3,
-  gameMinutes: 480,
-  catches: {},
-  baits: { "Червь": 10, "Зерно": 5, "Блесна": 3 },
-  keepnet: [],
-  record: null
-};
+    // Состояние игрока
+    let state = {
+      xp: 0,
+      level: 1,
+      money: 0,
+      bait: 5,
+      currentRodId: 'light'
+    };
 
-let data;
-try {
-  data = { ...defaults, ...JSON.parse(localStorage.getItem("quiet-pond-save")) };
-} catch {
-  data = { ...defaults };
-}
-data.catches = data.catches || {};
-data.baits = { ...defaults.baits, ...(data.baits || {}) };
-data.keepnet = Array.isArray(data.keepnet) ? data.keepnet : [];
-data.sonar = Number.isFinite(data.sonar) ? data.sonar : 3;
+    function init() {
+      populateRods();
+      updateUI();
+      log('🎮 Добро пожаловать в симулятор рыбалки. Выберите погоду, снасть и сделайте заброс.');
+    }
 
-let phase = "idle";
-let biteTimer = null;
-let currentFish = null;
-let castTimeout = null;
+    function populateRods() {
+      const sel = document.getElementById('rod-select');
+      sel.innerHTML = '';
+      rods.forEach(r => {
+        const opt = document.createElement('option');
+        opt.value = r.id;
+        opt.textContent = `${r.name} (дальность ${r.castDist} м, шанс ${(r.hookChance*100).toFixed(0)}%)`;
+        if (r.id === state.currentRodId) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }
 
-const $ = id => document.getElementById(id);
-const level = () => Math.floor(data.xp / 100) + 1;
-const currentSpot = () => spots[data.spot];
-const isNight = () => {
-  const hour = Math.floor((data.gameMinutes % 1440) / 60);
-  return hour < 6 || hour >= 18;
-};
+    function selectRod() {
+      state.currentRodId = document.getElementById('rod-select').value;
+      updateUI();
+      log(`Выбрана снасть: ${getRod().name}`);
+    }
 
-function save() {
-  localStorage.setItem("quiet-pond-save", JSON.stringify(data));
-}
+    function getRod() {
+      return rods.find(r => r.id === state.currentRodId);
+    }
 
-function formatWeight(weight) {
-  return weight.toFixed(1).replace(".", ",") + " кг";
-}
+    function updateCastPower() {
+      const v = document.getElementById('cast-power').value;
+      document.getElementById('power-display').textContent = v;
+    }
 
-function showNotice(message) {
-  $("notice").textContent = message;
-  window.clearTimeout(showNotice.timeout);
-  showNotice.timeout = window.setTimeout(() => $("notice").textContent = "", 3500);
-}
+    function updateWeather() {
+      const w = document.getElementById('weather').value;
+      let bonus = 0;
+      if (w === 'rain') bonus = -0.25; // дождь: реже, но крупнее
+      if (w === 'wind') bonus = +0.15;  // ветер: сложнее заброс, но рыба активнее
+      document.getElementById('weather-bonus').textContent = (bonus*100).toFixed(0) + '%';
+      log(`Погода: ${w === 'clear' ? 'ясно' : w === 'rain' ? 'дождь' : 'ветер'}. Бонус/штраф: ${(bonus*100).toFixed(0)}%`);
+    }
 
-function renderPlaces() {
-  $("places").innerHTML = spots.map((spot, index) => {
-    const locked = level() < spot.level;
-    return `<button class="place ${data.spot === index ? "active" : ""}"
-      data-spot="${index}" ${locked ? "disabled" : ""}>
-      <span class="place-icon">${spot.emoji}</span>
-      <span class="place-name">${spot.name}${locked ? `<br>Уровень ${spot.level}` : ""}</span>
-    </button>`;
-  }).join("");
+    function log(msg) {
+      const el = document.getElementById('log');
+      el.innerHTML += `<span class="log-line">${msg}</span>`;
+      el.scrollTop = el.scrollHeight;
+    }
 
-  document.querySelectorAll("[data-spot]").forEach(button => {
-    button.addEventListener("click", () => {
-      data.spot = Number(button.dataset.spot);
-      render();
-      showNotice(`Вы прибыли: ${currentSpot().name}.`);
-      save();
-    });
-  });
-}
+    let castResult = null;
 
-function renderBaits() {
-  const select = $("bait");
-  const previous = select.value;
-  select.innerHTML = Object.entries(data.baits)
-    .map(([name, count]) => `<option value="${name}">${name} — ${count} шт.</option>`)
-    .join("");
+    function makeCast() {
+      if (!castResult) {
+        const loc = document.getElementById('location').value;
+        const power = Number(document.getElementById('cast-power').value);
+        const rod = getRod();
+        const weather = document.getElementById('weather').value;
 
-  if (data.baits[previous] > 0) select.value = previous;
-  else {
-    const available = Object.keys(data.baits).find(name => data.baits[name] > 0);
-    if (available) select.value = available;
-  }
-}
+        // «Физика» заброса: дальность зависит от силы и снасти
+        const baseDist = rod.castDist;
+        const dist = Math.min(baseDist, Math.floor(baseDist * (power / 10)));
 
-function renderKeepnet() {
-  $("keepCount").textContent = `(${data.keepnet.length}/20)`;
-  if (!data.keepnet.length) {
-    $("keepnet").innerHTML = "Садок пока пуст.";
-    return;
-  }
+        castResult = { location: loc, distance: dist, tension: 0 };
 
-  $("keepnet").innerHTML = data.keepnet.map((fish, index) =>
-    `<div class="keep-row">
-      <span>${fish.name} · ${formatWeight(fish.weight)}</span>
-      <span>${fish.value} 🪙</span>
-    </div>`
-  ).join("");
-}
+        log(`🎣 Заброс на ${dist} м в зону: ${loc === 'shallow' ? 'мелководье' : loc === 'deep' ? 'глубину' : 'заросли'}. Ждите поклёвки…`);
+        document.getElementById('hook-btn').style.display = 'block';
+        document.getElementById('hook-btn').textContent = '⚡ ПОДСЕЧЬ СЕЙЧАС!';
 
-function renderMarket() {
-  const nextRodCost = data.rod === 1 ? 100 : data.rod === 2 ? 220 : null;
-  const items = [
-    { name: "Червь ×5", cost: 15, action: () => data.baits["Червь"] += 5 },
-    { name: "Зерно ×5", cost: 12, action: () => data.baits["Зерно"] += 5 },
-    { name: "Блесна ×3", cost: 24, action: () => data.baits["Блесна"] += 3 },    { name: "Заряд эхолота ×3", cost: 35, action: () => data.sonar += 3 }
-  ];
-
-  if (nextRodCost) {
-    items.unshift({
-      name: `Удочка уровня ${data.rod + 1}`,
-      cost: nextRodCost,
-      action: () => {
-        data.rod++;
-        showNotice(`Куплена удочка уровня ${data.rod}!`);
+        // Поклёвка через случайное время
+        const biteDelay = Math.random() * 3000 + 2000;
+        setTimeout(showBite, biteDelay);
       }
-    });
-  }
-
-  $("market").innerHTML = items.map((item, index) =>
-    `<div class="shop-item">
-      <span>${item.name} <span class="muted">— ${item.cost} 🪙</span></span>
-      <button data-buy="${index}" ${data.coins < item.cost ? "disabled" : ""}>Купить</button>
-    </div>`
-  ).join("");
-
-  $("market").querySelectorAll("[data-buy]").forEach(button => {
-    button.addEventListener("click", () => {
-      const item = items[Number(button.dataset.buy)];
-      if (data.coins < item.cost) return;
-      data.coins -= item.cost;
-      item.action();
-      render();
-      save();
-    });
-  });
-
-  if (!nextRodCost) {
-    $("market").insertAdjacentHTML("beforeend",
-      `<p class="muted">Удочка максимального уровня.</p>`);
-  }
-}
-
-function render() {
-  const spot = currentSpot();
-  $("level").textContent = level();
-  $("coins").textContent = data.coins;
-  $("rating").textContent = data.rating;
-  $("ratingDetail").textContent = data.rating;
-  $("rod").textContent = `Уровень ${data.rod}`;
-  $("emoji").textContent = spot.emoji;
-  $("spotInfo").textContent = `Место ${data.spot + 1} из ${spots.length} · Требуемый уровень: ${spot.level}`;
-  $("leftScenery").textContent = spot.scenery[0];
-  $("rightScenery").textContent = spot.scenery[1];
-
-  const hour = Math.floor((data.gameMinutes % 1440) / 60);
-  const minute = data.gameMinutes % 60;
-  $("clock").textContent = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
-  $("period").textContent = isNight() ? "Ночь" : "День";
-  $("pond").classList.toggle("night", isNight());
-
-  $("sonarInfo").textContent = `Заряды эхолота: ${data.sonar}`;
-  $("sonar").disabled = data.sonar <= 0 || phase !== "idle";
-  $("cast").disabled = phase === "waiting" || phase === "bite";
-  $("cast").textContent = phase === "waiting" ? "Ждём поклёвку…" :
-    phase === "bite" ? "Подсекай!" : "Забросить удочку";
-  $("bobber").classList.toggle("visible", phase !== "idle");
-  $("bobber").classList.toggle("bite", phase === "bite");
-
-  const ranks = [
-    [0, "Новичок у воды"],
-    [100, "Удачливый рыболов"],
-    [350, "Опытный рыбак"],
-    [800, "Мастер заводи"],
-    [1600, "Легенда водоёмов"]
-  ];
-  const rank = ranks.filter(([score]) => data.rating >= score).at(-1);
-  $("rankText").textContent = `${rank[1]} · до следующего звания: ${
-    ranks.find(([score]) => score > data.rating)?.[0] ?? "максимум"
-  } очков`;
-  $("record").textContent = data.record
-    ? `${data.record.name}, ${formatWeight(data.record.weight)}`
-    : "пока нет";
-
-  const entries = Object.entries(data.catches);
-  $("collection").innerHTML = entries.length
-    ? entries.map(([name, count]) => `<span class="fish">${name} ×${count}</span>`).join("")
-    : "Пока рыб нет.";
-
-  renderPlaces();
-  renderBaits();
-  renderKeepnet();
-  renderMarket();
-}
-
-function eligibleFish(baitName) {
-  return currentSpot().fish.filter(fish =>
-    (!fish.dayOnly || !isNight()) &&
-    (!fish.nightOnly || isNight()) &&
-    (!baitName || fish.bait.includes(baitName))
-  );
-}
-
-function cast() {
-  if (phase !== "idle") return;
-
-  const bait = $("bait").value;
-  if (!bait || data.baits[bait] <= 0) {
-    showNotice("Наживка закончилась — загляни на рынок.");
-    return;
-  }
-
-  data.baits[bait]--;
-  phase = "waiting";
-  $("status").textContent = "Поплавок на воде";
-  $("hint").textContent = "Ветерок качает воду… следи за поплавком.";
-  render();
-  save();
-
-  castTimeout = window.setTimeout(() => {
-    if (phase !== "waiting") return;
-
-    const possibleFish = eligibleFish(bait);
-    if (!possibleFish.length) {
-      resetFishing("Сегодня эта рыба не клюёт. Попробуй другую наживку.");
-      return;
     }
 
-    currentFish = possibleFish[Math.floor(Math.random() * possibleFish.length)];
-    phase = "bite";    $("status").textContent = "Поклёвка!";
-    $("hint").textContent = "Нажми «Подсекай!» скорее!";
-    render();
+    function showBite() {
+      if (!castResult) return;
+      log('⚡️ ПОКЛЁВКА! Нажмите «Подсечь» в течение 1.5 секунд!');
+      const btn = document.getElementById('hook-btn');
+      btn.style.background = '#f97316';
 
-    biteTimer = window.setTimeout(() => {
-      if (phase === "bite") resetFishing("Рыба сорвалась с крючка!");
-    }, 2800);
-  }, 2500 + Math.random() * 4500);
-}
-
-function reelIn() {
-  if (phase === "bite" && currentFish) {
-    window.clearTimeout(biteTimer);
-
-    const catchChance = Math.min(.96, .62 + data.rod * .1 - currentFish.rarity * .025);
-    if (Math.random() > catchChance) {
-      resetFishing("Рыба оказалась сильной и ушла!");
-      return;
+      // Авто-сброс кнопки, если не успели
+      setTimeout(() => {
+        if (btn.style.display !== 'none') {
+          log('❌ Слишком поздно! Рыба сорвалась.');
+          btn.style.display = 'none';
+          castResult = null;
+        }
+      }, 1500);
     }
 
-    if (data.keepnet.length >= 20) {
-      resetFishing("Садок полон! Продай улов, чтобы ловить дальше.");
-      return;
+    function tryHook() {
+      const btn = document.getElementById('hook-btn');
+      if (!castResult || btn.style.display === 'none') return;
+
+      const rod = getRod();
+      const weather = document.getElementById('weather').value;
+      const loc = castResult.location;
+
+      // «Физика» подсечки: шанс зависит от снасти, локации, погоды и приманки
+      let baseChance = rod.hookChance;
+      let locPenalty = 0;
+      if (loc === 'deep') locPenalty = 0.2;
+      if (loc === 'reeds') locPenalty = 0.35;
+
+      let weatherBonus = 0;
+      if (weather === 'rain') weatherBonus = -0.15;
+      if (weather === 'wind') weatherBonus = +0.1;
+
+      // Использование приманки (если есть)
+      let baitBonus = 0;
+      if (state.bait > 0) {
+        state.bait--;
+        baitBonus = 0.15;
+        log('✅ Использована приманка (+шанс). Приманок осталось: ' + state.bait);
+      } else {
+        log('⚠️ Приманки закончились — шанс ниже.');
+      }
+
+      const luck = Math.random();
+      const successChance = baseChance - locPenalty + weatherBonus + baitBonus + (Math.random() * 0.1 - 0.05);
+
+      if (luck < successChance) {
+        // Поймали
+        const fishName = loc === 'shallow' ? 'Плотва' : loc === 'deep' ? 'Щука' : 'Сом';
+        const weight = (Math.random() * 3 + 0.5).toFixed(1);
+        const xpGain = loc === 'shallow' ? 10 : loc === 'deep' ? 25 : 40;
+        const moneyGain = loc === 'shallow' ? 50 : loc === 'deep' ? 150 : 300;
+
+        state.xp += xpGain;
+        state.money += moneyGain;
+
+        log(`🎉 Поймали: <span class="highlight">${fishName}</span> (${weight} кг)! +${xpGain} XP, +${moneyGain} ₽`);
+
+        checkLevelUp();
+      } else {
+        log('❌ Сорвалось! Возможно, момент был неудачным или снасть не подходит.');
+      }
+
+      btn.style.display = 'none';
+      castResult = null;
+      updateUI();
     }
 
-    const fish = currentFish;
-    const weight = Math.round((fish.min + Math.random() * (fish.max - fish.min)) * 10) / 10;
-    const value = Math.max(1, Math.round(weight * fish.price));
-
-    data.keepnet.push({ name: fish.name, weight, value });
-    data.catches[fish.name] = (data.catches[fish.name] || 0) + 1;
-    data.total++;
-    data.xp += Math.max(5, Math.round(weight * 8));
-    data.rating += Math.round(value + fish.rarity * 10);
-
-    if (!data.record || weight > data.record.weight) {
-      data.record = { name: fish.name, weight };
+    function checkLevelUp() {
+      const xpNeeded = state.level * 100;
+      if (state.xp >= xpNeeded) {
+        state.level++;
+        state.xp -= xpNeeded;
+        log(`🏆 Новый уровень: ${state.level}! Теперь доступны более мощные снасти.`);
+        updateUI();
+      }
     }
 
-    resetFishing(`Поймана рыба: ${fish.name}, ${formatWeight(weight)}!`);
-    render();
-    save();
-    return;
-  }
+    function updateUI() {
+      document.getElementById('xp-val').textContent = state.xp;
+      document.getElementById('lvl-val').textContent = state.level;
+      document.getElementById('money-val').textContent = state.money;
+      document.getElementById('bait-val').textContent = state.bait;
+    }
 
-  if (phase === "idle") cast();
-}
-
-function resetFishing(message) {
-  window.clearTimeout(biteTimer);
-  window.clearTimeout(castTimeout);
-  phase = "idle";
-  currentFish = null;
-  $("status").textContent = "Забрось удочку";
-  $("hint").textContent = message || "Выбери наживку и жди поклёвки.";
-  render();
-}
-
-function useSonar() {
-  if (data.sonar <= 0 || phase !== "idle") return;
-  data.sonar--;
-
-  const fish = eligibleFish(null);
-  const names = [...new Set(fish.map(item => item.name))];
-  $("hint").textContent = names.length
-    ? `Эхолот заметил рыбу: ${names.slice(0, 3).join(", ")}${names.length > 3 ? "…" : ""}.`
-    : "Эхолот не обнаружил активную рыбу.";
-
-  showNotice("Эхолот просканировал воду.");
-  render();
-  save();
-}
-
-function sellCatch() {
-  if (!data.keepnet.length) {
-    showNotice("В садке пока нечего продавать.");
-    return;
-  }
-
-  const earnings = data.keepnet.reduce((sum, fish) => sum + fish.value, 0);
-  const count = data.keepnet.length;
-  data.coins += earnings;
-  data.keepnet = [];
-  render();
-  save();
-  showNotice(`Продано рыб: ${count}. Получено ${earnings} монет.`);
-}
-
-$("cast").addEventListener("click", reelIn);
-$("sonar").addEventListener("click", useSonar);
-$("sell").addEventListener("click", sellCatch);
-$("bait").addEventListener("change", () => {
-  if (phase === "idle") {
-    $("hint").textContent = `Выбрана наживка: ${$("bait").value}.`;
-  }
-});
-
-window.setInterval(() => {
-  data.gameMinutes = (data.gameMinutes + 10) % 1440;
-  render();
-  save();
-}, 2500);
-
-render();
-</script>
+    init();
+  </script>
 </body>
 </html>
