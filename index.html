@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#102b31">
+  <title>Тихая заводь</title>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#102b31;color:#eff8e8;font:16px system-ui,sans-serif}
+    main{max-width:560px;margin:auto;padding:20px 16px}
+    h1{margin:4px 0;font-size:34px}
+    h2{font-size:18px;margin:0 0 12px}
+    .muted{color:#adc7bd;font-size:13px}
+    .stats,.places{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    .card,.stat{background:#193b40;border:1px solid #ffffff1c;border-radius:16px;padding:15px;margin:12px 0}
+    .stat{margin:0;padding:12px 8px;text-align:center}
+    .place{padding:12px 5px;background:#20484b;color:#eff8e8;border:1px solid #ffffff22;border-radius:12px}
+    .place.active{border-color:#a7d66f}
+    button,select{font:inherit}
+    button{cursor:pointer}
+    .pond{min-height:170px;background:linear-gradient(#376c66,#183f43);border-radius:14px;display:grid;place-content:center;text-align:center;margin-bottom:12px}
+    #emoji{font-size:48px}
+    #status{font-weight:800;margin-top:6px}
+    select{width:100%;padding:11px;border-radius:10px;background:#102b31;color:white;border:1px solid #ffffff33}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .action{width:100%;padding:14px;margin-top:12px;background:#a7d66f;border:0;border-radius:12px;color:#183020;font-weight:800}
+    .secondary{background:#315c53;color:white}
+    button:disabled{opacity:.5}
+    .fish{display:inline-block;margin:3px;padding:7px 10px;background:#20484b;border-radius:20px;font-size:13px}
+  </style>
+</head>
+<body>
+<main>
+  <p class="muted">РЫБОЛОВНОЕ ПРИКЛЮЧЕНИЕ</p>
+  <h1>Тихая заводь</h1>
+  <p class="muted">Найди своё место у воды.</p>
+
+  <section class="stats">
+    <div class="stat">Уровень<br><b id="level">1</b></div>
+    <div class="stat">Монеты<br><b id="coins">60</b> 🪙</div>
+    <div class="stat">Улов<br><b id="total">0</b> 🐟</div>
+  </section>
+
+  <section class="card">
+    <h2>Выбери место</h2>
+    <div class="places" id="places"></div>
+  </section>
+
+  <section class="card">
+    <div class="pond">
+      <div id="emoji">🌿</div>
+      <div id="status">Забрось удочку</div>
+      <div class="muted" id="hint">Выбери наживку и жди поклёвки.</div>
+    </div>
+    <div class="row">
+      <label class="muted">Наживка
+        <select id="bait">
+          <option value="Червь">Червь</option>
+          <option value="Зерно">Зерно</option>
+          <option value="Блесна">Блесна</option>
+        </select>
+      </label>
+      <div class="muted">Удочка<br><b id="rod">Уровень 1</b></div>
+    </div>
+    <button class="action" id="cast">Забросить удочку</button>
+  </section>
+
+  <section class="card">
+    <h2>Улучшение удочки</h2>
+    <p class="muted">Уменьшает шанс упустить рыбу.</p>
+    <button class="action secondary" id="upgrade">Улучшить за 80 🪙</button>
+  </section>
+
+  <section class="card">
+    <h2>Твоя коллекция</h2>
+    <div id="collection" class="muted">Пока рыб нет.</div>
+  </section>
+</main>
+
+<script>
+const spots=[
+  {name:"Луговой пруд",emoji:"🌿",level:1,fish:[["Карась",12],["Плотва",9],["Линь",20],["Золотой карась",42]]},
+  {name:"Сосновая река",emoji:"🌲",level:2,fish:[["Голавль",20],["Язь",23],["Щука",31],["Серебряный язь",55]]},
+  {name:"Синее озеро",emoji:"⛰️",level:4,fish:[["Окунь",18],["Судак",34],["Большой лещ",29],["Лунный судак",72]]}
+];
+let data;
+try{data=JSON.parse(localStorage.getItem("quiet-pond-save"))||{};}catch{data={};}
+data={coins:60,xp:0,total:0,rod:1,spot:0,catches:{},...data};
+let phase="idle",timer;
+const $=id=>document.getElementById(id);
+const level=()=>Math.floor(data.xp/100)+1;
+function save(){localStorage.setItem("quiet-pond-save",JSON.stringify(data));}
+function draw(){
+  $("level").textContent=level();
+  $("coins").textContent=data.coins;
+  $("total").textContent=data.total;
+  $("rod").textContent="Уровень "+data.rod;  $("places").innerHTML=spots.map((s,i)=>`<button class="place ${data.spot===i?"active":""}" data-i="${i}" ${level()<s.level||phase!=="idle"?"disabled":""}>${s.emoji}<br>${s.name}<br><small>${level()<s.level?"🔒 Ур. "+s.level:"Открыто"}</small></button>`).join("");
+  $("upgrade").textContent=data.rod>=5?"Максимальный уровень":`Улучшить за ${data.rod*80} 🪙`;
+  $("upgrade").disabled=data.rod>=5||data.coins<data.rod*80||phase!=="idle";
+  $("collection").innerHTML=Object.keys(data.catches).length
+    ?Object.entries(data.catches).map(([n,c])=>`<span class="fish">🐟 ${n} ×${c}</span>`).join("")
+    :"Пока рыб нет.";
+  $("cast").disabled=phase==="waiting";
+  $("cast").textContent=phase==="waiting"?"Ждём поклёвку…":phase==="bite"?"Подсечь!":"Забросить удочку";
+}
+function resetPond(message="Забрось удочку",hint="Выбери наживку и жди поклёвки.",emoji=spots[data.spot].emoji){
+  $("status").textContent=message;$("hint").textContent=hint;$("emoji").textContent=emoji;
+}
+$("places").addEventListener("click",e=>{
+  const b=e.target.closest("[data-i]");if(!b||phase!=="idle")return;
+  data.spot=Number(b.dataset.i);save();draw();resetPond();
+});
+$("cast").addEventListener("click",()=>{
+  if(phase==="bite"){
+    clearTimeout(timer);
+    const fish=spots[data.spot].fish[Math.floor(Math.random()*spots[data.spot].fish.length)];
+    if(Math.random()<Math.max(.04,.18-data.rod*.03)){
+      phase="idle";resetPond("Рыба сорвалась!","Попробуй ещё раз.");draw();return;
+    }
+    const reward=fish[1],xp=15;
+    data.coins+=reward;data.xp+=xp;data.total++;
+    data.catches[fish[0]]=(data.catches[fish[0]]||0)+1;
+    phase="idle";save();draw();
+    resetPond("🐟 "+fish[0]+"!","Получено "+reward+" монет и "+xp+" опыта.","🐟");
+    return;
+  }
+  if(phase!=="idle")return;
+  phase="waiting";draw();resetPond("Поплавок покачивается…","Тише — рыба уже рядом.","〰️");
+  timer=setTimeout(()=>{
+    phase="bite";draw();resetPond("КЛЮЁТ!","Нажми кнопку, чтобы подсечь рыбу!","❗");
+    timer=setTimeout(()=>{if(phase==="bite"){phase="idle";draw();resetPond("Рыба уплыла…","Забрось удочку ещё раз.");}},2500);
+  },2000+Math.random()*3500);
+});
+$("upgrade").addEventListener("click",()=>{
+  const cost=data.rod*80;
+  if(data.coins>=cost&&data.rod<5){data.coins-=cost;data.rod++;save();draw();}
+});
+$("bait").addEventListener("change",()=>{});
+draw();
+</script>
+</body>
+</html>
