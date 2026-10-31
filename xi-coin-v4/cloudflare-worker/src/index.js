@@ -36,9 +36,9 @@ async function verifyTelegram(initData, botToken) {
   } catch { return null; }
 }
 const ITEMS = {
-  power: { title: "Xi Power +0.010", description: "Permanent +0.010 XI per click", stars: 150 },
-  energy: { title: "Energy +5000", description: "Permanent +5000 maximum energy", stars: 80 },
-  boost: { title: "VIP x2 навсегда", description: "VIP: x2 к майнингу, энергии и кликам навсегда", stars: 300 },
+  power: { title: "Xi Power +0.010", description: "Permanent +0.010 XI per click", stars: 75 },
+  energy: { title: "Energy +5000", description: "Permanent +5000 maximum energy", stars: 40 },
+  boost: { title: "VIP x2 навсегда", description: "VIP: x2 к майнингу, энергии и кликам навсегда", stars: 150 },
   coins10: { title: "12 XI", description: "Покупка 12 игровых монет Xi Coin", stars: 10, coins: 12 },
   coins50: { title: "155 XI", description: "Покупка 155 игровых монет Xi Coin", stars: 50, coins: 155 },
   coins100: { title: "210 XI", description: "Покупка 210 игровых монет Xi Coin", stars: 100, coins: 210 },
