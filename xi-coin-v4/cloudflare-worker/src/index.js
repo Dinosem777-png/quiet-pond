@@ -38,7 +38,12 @@ async function verifyTelegram(initData, botToken) {
 const ITEMS = {
   power: { title: "Xi Power +0.010", description: "Permanent +0.010 XI per click", stars: 150 },
   energy: { title: "Energy +5000", description: "Permanent +5000 maximum energy", stars: 80 },
-  boost: { title: "VIP x2 навсегда", description: "VIP: x2 к майнингу, энергии и кликам навсегда", stars: 300 }
+  boost: { title: "VIP x2 навсегда", description: "VIP: x2 к майнингу, энергии и кликам навсегда", stars: 300 },
+  coins10: { title: "12 XI", description: "Покупка 12 игровых монет Xi Coin", stars: 10, coins: 12 },
+  coins50: { title: "155 XI", description: "Покупка 155 игровых монет Xi Coin", stars: 50, coins: 155 },
+  coins100: { title: "210 XI", description: "Покупка 210 игровых монет Xi Coin", stars: 100, coins: 210 },
+  coins300: { title: "840 XI", description: "Покупка 840 игровых монет Xi Coin", stars: 300, coins: 840 },
+  coins900: { title: "5500 XI", description: "Покупка 5500 игровых монет Xi Coin", stars: 900, coins: 5500 }
 };
 async function telegram(env, method, payload) {
   const r = await fetch("https://api.telegram.org/bot" + env.BOT_TOKEN + "/" + method, {
@@ -358,6 +363,10 @@ async function webhook(request, env) {
       if (!exists) {
         await env.DB.prepare("INSERT OR IGNORE INTO purchases (tg_id, payload, stars, item) VALUES (?, ?, ?, ?)")
           .bind(tgId, payment.invoice_payload, payment.total_amount, key).run();
+        if (item.coins) {
+          const buyer = await env.DB.prepare("SELECT id FROM users WHERE tg_id = ?").bind(tgId).first();
+          if (buyer) await issueCoins(env.DB,buyer.id,item.coins);
+        }
         if (key === "power") await env.DB.prepare("UPDATE users SET click_power = click_power + 0.010 WHERE tg_id = ?").bind(tgId).run();
         if (key === "energy") await env.DB.prepare("UPDATE users SET max_energy = max_energy + 5000, energy = energy + 5000 WHERE tg_id = ?").bind(tgId).run();
         if (key === "boost") await env.DB.prepare("UPDATE users SET vip_multiplier = 2, max_energy = CASE WHEN vip_multiplier < 2 THEN max_energy * 2 ELSE max_energy END, energy = CASE WHEN vip_multiplier < 2 THEN MIN(max_energy * 2, energy * 2) ELSE energy END WHERE tg_id = ?").bind(tgId).run();
