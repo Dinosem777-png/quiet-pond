@@ -63,14 +63,18 @@ async function getUser(db, tg, ref) {
 }
 async function regenerateEnergy(db, u) {
   const now = Date.now();
-  const last = Date.parse(String(u.energy_updated_at || new Date(now).toISOString()).replace(" ", "T") + (String(u.energy_updated_at || "").includes("Z") ? "" : "Z"));
+  const raw = u.energy_updated_at;
+  const last = raw
+    ? Date.parse(String(raw).replace(" ", "T") + (String(raw).includes("Z") ? "" : "Z"))
+    : now;
   const elapsed = Math.max(0, now - (Number.isFinite(last) ? last : now));
   const gained = Math.floor(elapsed / 60000);
-  if (gained > 0 || Number(u.energy) > Number(u.max_energy)) {
-    const energy = Math.min(Number(u.max_energy), Number(u.energy) + gained);
+  const energy = Math.min(Number(u.max_energy), Number(u.energy) + gained);
+  if (!raw || gained > 0 || Number(u.energy) > Number(u.max_energy)) {
+    const stamp = raw && gained === 0 ? raw : new Date(now).toISOString();
     await db.prepare("UPDATE users SET energy = ?, energy_updated_at = ? WHERE id = ?")
-      .bind(energy, new Date(now).toISOString(), u.id).run();
-    u = { ...u, energy, energy_updated_at: new Date(now).toISOString() };
+      .bind(energy, stamp, u.id).run();
+    u = { ...u, energy, energy_updated_at: stamp };
   }
   return u;
 }
