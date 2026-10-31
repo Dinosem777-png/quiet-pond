@@ -177,7 +177,7 @@ async function webhook(request, env) {
       }
     }
     return json({ ok: true });
-  } catch (e) { return json({ ok: false, error: e.message }, 500); }
+  } catch (e) { console.error("Xi Coin Telegram webhook error:", e?.stack || e?.message || String(e)); return json({ ok: false, error: e?.message || "Webhook error" }, 500); }
 }
 export default {
   async fetch(request, env) {
