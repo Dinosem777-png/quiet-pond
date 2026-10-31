@@ -328,7 +328,8 @@ async function api(request, env, url, tg) {
     const claim=await db.prepare("UPDATE daily_task_progress SET claimed=1 WHERE user_id=? AND day=? AND task_key=? AND claimed=0").bind(u.id,utcDay(),key).run();
     if(!claim.meta.changes)return json({error:"Награда уже получена"},400);
     if(!(await issueCoins(db,u.id,def.reward)))return json({error:"Лимит XI достигнут"},400);
-    return json({ok:true,reward:def.reward});
+    await db.prepare("INSERT INTO pass_progress(user_id,season,xp,claimed_level,premium) VALUES(?, '2026-11',25,0,0) ON CONFLICT(user_id,season) DO UPDATE SET xp=xp+25").bind(u.id).run();
+    return json({ok:true,reward:def.reward,passXp:25});
   }
   if (url.pathname === "/api/miner-buy" && method === "POST") {
     const u=await getUser(db,tg);
