@@ -253,7 +253,7 @@ async function api(request, env, url, tg) {
     const u=await getUser(db,tg),season="2026-11",level=Math.max(1,Math.min(30,Number(body.level)||0));
     const row=await db.prepare("SELECT xp,claimed_level,premium FROM pass_progress WHERE user_id=? AND season=?").bind(u.id,season).first();
     if(!row||Math.floor(Number(row.xp||0)/100)+1<level)return json({error:"Уровень пропуска ещё не достигнут"},400);
-    if(Number(row.claimed_level||0)>=level)return json({error:"Награда уже получена"},400);
+    if(Number(row.claimed_level||0)!==level-1)return json({error:"Сначала забери предыдущую награду"},400);
     const rare=level===10?"rare":level===20?"epic":level===30?"legendary":null;
     const reward=Number((level*0.1).toFixed(2));
     if(!(await issueCoins(db,u.id,reward)))return json({error:"Лимит XI достигнут"},400);
@@ -289,18 +289,18 @@ async function api(request, env, url, tg) {
   if (url.pathname === "/api/economy" && method === "GET") {
     const u = await getUser(db, tg);
     const miners = await db.prepare("SELECT miner_key, COUNT(*) AS count FROM miners WHERE user_id = ? GROUP BY miner_key").bind(u.id).all();
-    const mineList = await db.prepare("SELECT id, miner_key, last_claim_at FROM miners WHERE user_id = ?").bind(u.id).all();
+    const mineList = await db.prepare("SELECT m.id,m.miner_key,m.last_claim_at,COALESCE(l.level,1) AS level FROM miners m LEFT JOIN miner_levels l ON l.miner_id=m.id WHERE m.user_id = ?").bind(u.id).all();
     const member = await db.prepare("SELECT f.id, f.name FROM faction_members m JOIN factions f ON f.id=m.faction_id WHERE m.user_id=?").bind(u.id).first();
     const factions = await db.prepare("SELECT f.id,f.name,COUNT(m.user_id) AS members FROM factions f LEFT JOIN faction_members m ON m.faction_id=f.id GROUP BY f.id ORDER BY members DESC LIMIT 20").all();
     const chat = await db.prepare("SELECT c.message,c.username,c.created_at FROM chat_messages c ORDER BY c.id DESC LIMIT 30").all();
-    const adsTotal=await db.prepare("SELECT COUNT(*) AS n FROM ads WHERE tg_id=?").bind(String(tg.id)).first(); const adProg=await db.prepare("SELECT energy_progress FROM ad_progress WHERE user_id=?").bind(u.id).first(); const ad50=await db.prepare("SELECT COUNT(*) AS n FROM miners WHERE user_id=? AND miner_key='ad50'").bind(u.id).first(); const ad100=await db.prepare("SELECT COUNT(*) AS n FROM miners WHERE user_id=? AND miner_key='ad100'").bind(u.id).first(); const rates={nano:0.005,pocket:0.02,starter:0.06,basic:0.08,pro:0.6,farm:5,ad50:0.05,ad100:0.1,rare:0.25,epic:1,legendary:4}; const baseHourly=(mineList.results||[]).reduce((s,m)=>s+(rates[m.miner_key]||0),0); const levelBonus=Math.max(0,Math.min(1,(Number(u.player_level||1)-1)/999)); const hourlyIncome=baseHourly*Number(u.vip_multiplier||1)*(1+levelBonus);
+    const adsTotal=await db.prepare("SELECT COUNT(*) AS n FROM ads WHERE tg_id=?").bind(String(tg.id)).first(); const adProg=await db.prepare("SELECT energy_progress FROM ad_progress WHERE user_id=?").bind(u.id).first(); const ad50=await db.prepare("SELECT COUNT(*) AS n FROM miners WHERE user_id=? AND miner_key='ad50'").bind(u.id).first(); const ad100=await db.prepare("SELECT COUNT(*) AS n FROM miners WHERE user_id=? AND miner_key='ad100'").bind(u.id).first(); const rates={nano:0.005,pocket:0.02,starter:0.06,basic:0.08,pro:0.6,farm:5,ad50:0.05,ad100:0.1,rare:0.25,epic:1,legendary:4}; const baseHourly=(mineList.results||[]).reduce((s,m)=>s+(rates[m.miner_key]||0)*(1+0.1*(Number(m.level||1)-1)),0); const levelBonus=Math.max(0,Math.min(1,(Number(u.player_level||1)-1)/999)); const hourlyIncome=baseHourly*Number(u.vip_multiplier||1)*(1+levelBonus);
     return json({baseHourly,hourlyIncome,vip: Number(u.vip_multiplier||1)>=2,level:Number(u.player_level||1),levelBonus:levelBonus*100,totalAds:adsTotal.n,energyProgress:adProg?.energy_progress||0,ad50:ad50.n,ad100:ad100.n,miners:mineList.results||[], faction:member||null, factions:factions.results||[], chat:(chat.results||[]).reverse(), catalog:[
       {key:"nano",name:"ASIC Nano",price:100,rate:0.005},
       {key:"pocket",name:"ASIC Pocket",price:500,rate:0.02},
       {key:"starter",name:"ASIC Starter",price:1500,rate:0.06},
       {key:"basic",name:"ASIC Mini",price:2500,rate:0.08},
       {key:"pro",name:"ASIC Pro",price:15000,rate:0.6},
-      {key:"farm",name:"ASIC Farm",price:100000,rate:5},{key:"ad50",name:"Рекламный ASIC 50",price:0,rate:0.05},{key:"ad100",name:"Рекламный ASIC 100",price:0,rate:0.1}
+      {key:"farm",name:"ASIC Farm",price:100000,rate:5},{key:"rare",name:"Редкий ASIC",price:0,rate:0.25},{key:"epic",name:"Эпический ASIC",price:0,rate:1},{key:"legendary",name:"Легендарный ASIC",price:0,rate:4},{key:"ad50",name:"Рекламный ASIC 50",price:0,rate:0.05},{key:"ad100",name:"Рекламный ASIC 100",price:0,rate:0.1}
     ]});
   }
   if(url.pathname==="/api/progression"&&method==="GET"){
@@ -339,13 +339,13 @@ async function api(request, env, url, tg) {
   }
   if (url.pathname === "/api/miner-claim" && method === "POST") {
     const u=await getUser(db,tg);
-    const rates={nano:0.005,pocket:0.02,starter:0.06,basic:0.08,pro:0.6,farm:5,ad50:0.05,ad100:0.1};
+    const rates={nano:0.005,pocket:0.02,starter:0.06,basic:0.08,pro:0.6,farm:5,ad50:0.05,ad100:0.1,rare:0.25,epic:1,legendary:4};
     const owned=await db.prepare("SELECT id,miner_key,last_claim_at FROM miners WHERE user_id=?").bind(u.id).all();
     let reward=0;
     for(const m of owned.results||[]){
       const last=Date.parse(String(m.last_claim_at).replace(" ","T")+(String(m.last_claim_at).includes("Z")?"":"Z"));
       const hours=Math.min(24,Math.max(0,(Date.now()-(Number.isFinite(last)?last:Date.now()))/3600000));
-      const ml=await db.prepare("SELECT level FROM miner_levels WHERE miner_id=?").bind(m.id).first(); reward+=hours*(rates[m.miner_key]||0)*Number(ml?.level||1);
+      const ml=await db.prepare("SELECT level FROM miner_levels WHERE miner_id=?").bind(m.id).first(); reward+=hours*(rates[m.miner_key]||0)*(1+0.1*(Number(ml?.level||1)-1));
     }
     const levelBonus=Math.max(0,Math.min(1,(Number(u.player_level||1)-1)/999));
     reward*=Number(u.vip_multiplier||1)*(1+levelBonus);
@@ -413,7 +413,7 @@ async function webhook(request, env) {
         if (key === "power") await env.DB.prepare("UPDATE users SET click_power = click_power + 0.010 WHERE tg_id = ?").bind(tgId).run();
         if (key === "energy") await env.DB.prepare("UPDATE users SET max_energy = max_energy + 5000, energy = energy + 5000 WHERE tg_id = ?").bind(tgId).run();
         if (key === "boost") await env.DB.prepare("UPDATE users SET vip_multiplier = 2, max_energy = CASE WHEN vip_multiplier < 2 THEN max_energy * 2 ELSE max_energy END, energy = CASE WHEN vip_multiplier < 2 THEN MIN(max_energy * 2, energy * 2) ELSE energy END WHERE tg_id = ?").bind(tgId).run();
-        if (key === "passpremium") await env.DB.prepare("UPDATE pass_progress SET premium=1 WHERE user_id=(SELECT id FROM users WHERE tg_id=?) AND season='2026-11'").bind(tgId).run();
+        if (key === "passpremium") { const buyer=await env.DB.prepare("SELECT id FROM users WHERE tg_id=?").bind(tgId).first(); if(buyer){await env.DB.prepare("INSERT OR IGNORE INTO pass_progress(user_id,season,xp,claimed_level,premium) VALUES(?,'2026-11',0,0,0)").bind(buyer.id).run();await env.DB.prepare("UPDATE pass_progress SET premium=1 WHERE user_id=? AND season='2026-11'").bind(buyer.id).run();} }
       }
     }
     return json({ ok: true });
