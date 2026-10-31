@@ -253,8 +253,11 @@ async function api(request, env, url, tg) {
     const member = await db.prepare("SELECT f.id, f.name FROM faction_members m JOIN factions f ON f.id=m.faction_id WHERE m.user_id=?").bind(u.id).first();
     const factions = await db.prepare("SELECT f.id,f.name,COUNT(m.user_id) AS members FROM factions f LEFT JOIN faction_members m ON m.faction_id=f.id GROUP BY f.id ORDER BY members DESC LIMIT 20").all();
     const chat = await db.prepare("SELECT c.message,c.username,c.created_at FROM chat_messages c ORDER BY c.id DESC LIMIT 30").all();
-    const adsTotal=await db.prepare("SELECT COUNT(*) AS n FROM ads WHERE tg_id=?").bind(String(tg.id)).first(); const adProg=await db.prepare("SELECT energy_progress FROM ad_progress WHERE user_id=?").bind(u.id).first(); const ad50=await db.prepare("SELECT COUNT(*) AS n FROM miners WHERE user_id=? AND miner_key='ad50'").bind(u.id).first(); const ad100=await db.prepare("SELECT COUNT(*) AS n FROM miners WHERE user_id=? AND miner_key='ad100'").bind(u.id).first(); const rates={basic:0.08,pro:0.6,farm:5,ad50:0.05,ad100:0.1}; const baseHourly=(mineList.results||[]).reduce((s,m)=>s+(rates[m.miner_key]||0),0); const levelBonus=Math.max(0,Math.min(1,(Number(u.player_level||1)-1)/999)); const hourlyIncome=baseHourly*Number(u.vip_multiplier||1)*(1+levelBonus);
+    const adsTotal=await db.prepare("SELECT COUNT(*) AS n FROM ads WHERE tg_id=?").bind(String(tg.id)).first(); const adProg=await db.prepare("SELECT energy_progress FROM ad_progress WHERE user_id=?").bind(u.id).first(); const ad50=await db.prepare("SELECT COUNT(*) AS n FROM miners WHERE user_id=? AND miner_key='ad50'").bind(u.id).first(); const ad100=await db.prepare("SELECT COUNT(*) AS n FROM miners WHERE user_id=? AND miner_key='ad100'").bind(u.id).first(); const rates={nano:0.005,pocket:0.02,starter:0.06,basic:0.08,pro:0.6,farm:5,ad50:0.05,ad100:0.1}; const baseHourly=(mineList.results||[]).reduce((s,m)=>s+(rates[m.miner_key]||0),0); const levelBonus=Math.max(0,Math.min(1,(Number(u.player_level||1)-1)/999)); const hourlyIncome=baseHourly*Number(u.vip_multiplier||1)*(1+levelBonus);
     return json({baseHourly,hourlyIncome,vip: Number(u.vip_multiplier||1)>=2,level:Number(u.player_level||1),levelBonus:levelBonus*100,totalAds:adsTotal.n,energyProgress:adProg?.energy_progress||0,ad50:ad50.n,ad100:ad100.n,miners:mineList.results||[], faction:member||null, factions:factions.results||[], chat:(chat.results||[]).reverse(), catalog:[
+      {key:"nano",name:"ASIC Nano",price:100,rate:0.005},
+      {key:"pocket",name:"ASIC Pocket",price:500,rate:0.02},
+      {key:"starter",name:"ASIC Starter",price:1500,rate:0.06},
       {key:"basic",name:"ASIC Mini",price:2500,rate:0.08},
       {key:"pro",name:"ASIC Pro",price:15000,rate:0.6},
       {key:"farm",name:"ASIC Farm",price:100000,rate:5},{key:"ad50",name:"Рекламный ASIC 50",price:0,rate:0.05},{key:"ad100",name:"Рекламный ASIC 100",price:0,rate:0.1}
@@ -286,7 +289,7 @@ async function api(request, env, url, tg) {
   }
   if (url.pathname === "/api/miner-buy" && method === "POST") {
     const u=await getUser(db,tg);
-    const catalog={basic:{price:2500},pro:{price:15000},farm:{price:100000}};
+    const catalog={nano:{price:100},pocket:{price:500},starter:{price:1500},basic:{price:2500},pro:{price:15000},farm:{price:100000}};
     const item=catalog[String(body.miner||"")];
     if(!item) return json({error:"Неизвестный ASIC"},400);
     const debit=await db.prepare("UPDATE users SET balance=balance-? WHERE id=? AND balance>=?").bind(item.price,u.id,item.price).run();
@@ -296,7 +299,7 @@ async function api(request, env, url, tg) {
   }
   if (url.pathname === "/api/miner-claim" && method === "POST") {
     const u=await getUser(db,tg);
-    const rates={basic:0.08,pro:0.6,farm:5,ad50:0.05,ad100:0.1};
+    const rates={nano:0.005,pocket:0.02,starter:0.06,basic:0.08,pro:0.6,farm:5,ad50:0.05,ad100:0.1};
     const owned=await db.prepare("SELECT id,miner_key,last_claim_at FROM miners WHERE user_id=?").bind(u.id).all();
     let reward=0;
     for(const m of owned.results||[]){
