@@ -87,9 +87,15 @@ async function getUser(db, tg, ref) {
   }
   const inserted = await db.prepare("INSERT OR IGNORE INTO users (tg_id, username, ref_code, referrer_id) VALUES (?, ?, ?, ?)")
     .bind(String(tg.id), tg.username || "", code, referrerId).run();
-  if (inserted.meta.changes && referrerId) {
-    await issueCoins(db, referrerId, 1);
-    await db.prepare("UPDATE users SET referral_paid = 1 WHERE tg_id = ?").bind(String(tg.id)).run();
+  if (inserted.meta.changes) {
+    // Welcome gift: one free Nano ASIC and 5 XI, granted only once at registration.
+    await issueCoins(db, inserted.meta.last_row_id, 5);
+    await db.prepare("INSERT INTO miners (user_id, miner_key, last_claim_at) VALUES (?, 'nano', ?)")
+      .bind(inserted.meta.last_row_id, new Date().toISOString()).run();
+    if (referrerId) {
+      await issueCoins(db, referrerId, 1);
+      await db.prepare("UPDATE users SET referral_paid = 1 WHERE tg_id = ?").bind(String(tg.id)).run();
+    }
   }
   return await db.prepare("SELECT * FROM users WHERE tg_id = ?").bind(String(tg.id)).first();
 }
