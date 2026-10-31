@@ -155,11 +155,13 @@ async function api(request, env, url, tg) {
     const nextLevel = nextProgress.level;
     const nextBonus = Math.max(0, Math.min(1, (nextLevel - 1) / 999));
     const energyScale = (1 + nextBonus) / (1 + levelBonus);
+    const levelReward = nextLevel > currentLevel ? nextLevel : 0;
+    if(levelReward > 0) await issueCoins(db,u.id,levelReward);
     await db.prepare("UPDATE users SET total_clicks=total_clicks+1,xp=?,player_level=?,max_energy=CAST(ROUND(max_energy*?) AS INTEGER) WHERE id=?")
       .bind(nextXp,nextLevel,energyScale,u.id).run();
     await bumpTask(db,u.id,"clicks",1);
     if(u.referrer_id)await issueCoins(db,u.referrer_id,gain*0.05);
-    return json({user:await db.prepare("SELECT * FROM users WHERE id=?").bind(u.id).first(),gain,earnedCoins:gain,xpGain:xpPerClick});
+    return json({user:await db.prepare("SELECT * FROM users WHERE id=?").bind(u.id).first(),gain,earnedCoins:gain,xpGain:xpPerClick,levelReward,newLevel:nextLevel>currentLevel?nextLevel:null});
   }
   if (url.pathname === "/api/upgrade" && method === "POST") {
     const u = await getUser(db, tg);
