@@ -106,15 +106,15 @@ async function regenerateEnergy(db, u) {
   return u;
 }
 function progressionStats(totalXp) {
-  const cap = 20 * 999 + 999 * 998;
+  const cap = 1000 * 999 + 250 * 999 * 998;
   let xp = Math.max(0, Math.min(cap, Math.floor(Number(totalXp) || 0)));
   let level = 1;
   let remaining = xp;
-  let needed = 20;
+  let needed = 1000;
   while (level < 1000 && remaining >= needed) {
     remaining -= needed;
     level++;
-    needed = 20 + (level - 1) * 2;
+    needed = 1000 + (level - 1) * 500;
   }
   return { level, xpIntoLevel: level >= 1000 ? needed : remaining, xpNeeded: needed, xpGainForClick: null };
 }
@@ -149,7 +149,7 @@ async function api(request, env, url, tg) {
     if(!changed.meta.changes)return json({error:"Нет энергии"},400);
     if(!(await issueCoins(db,u.id,gain))){await db.prepare("UPDATE users SET energy=energy+1 WHERE id=?").bind(u.id).run();return json({error:"Все 10 000 000 XI уже добыты. Произойдёт чудо! ✨"},400);}
     const xpPerClick = Math.max(1, Number(u.level || 1)) * 10;
-    const xpCap = 20 * 999 + 999 * 998;
+    const xpCap = 1000 * 999 + 250 * 999 * 998;
     const nextXp = Math.min(xpCap, Number(u.xp || 0) + xpPerClick);
     const nextProgress = progressionStats(nextXp);
     const nextLevel = nextProgress.level;
