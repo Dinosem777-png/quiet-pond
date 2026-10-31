@@ -148,7 +148,7 @@ async function api(request, env, url, tg) {
     const changed = await db.prepare("UPDATE users SET energy=energy-1,energy_updated_at=? WHERE id=? AND energy>0").bind(new Date().toISOString(),u.id).run();
     if(!changed.meta.changes)return json({error:"Нет энергии"},400);
     if(!(await issueCoins(db,u.id,gain))){await db.prepare("UPDATE users SET energy=energy+1 WHERE id=?").bind(u.id).run();return json({error:"Все 10 000 000 XI уже добыты. Произойдёт чудо! ✨"},400);}
-    const xpPerClick = Math.max(1, Number(u.level || 1));
+    const xpPerClick = 1 + (Math.max(0, Math.min(1000, Number(u.level || 0))) * 0.001);
     const xpCap = 1000 * 999 + 250 * 999 * 998;
     const nextXp = Math.min(xpCap, Number(u.xp || 0) + xpPerClick);
     const nextProgress = progressionStats(nextXp);
@@ -159,7 +159,7 @@ async function api(request, env, url, tg) {
       .bind(nextXp,nextLevel,energyScale,u.id).run();
     await bumpTask(db,u.id,"clicks",1);
     if(u.referrer_id)await issueCoins(db,u.referrer_id,gain*0.05);
-    return json({user:await db.prepare("SELECT * FROM users WHERE id=?").bind(u.id).first(),gain,earnedCoins:gain});
+    return json({user:await db.prepare("SELECT * FROM users WHERE id=?").bind(u.id).first(),gain,earnedCoins:gain,xpGain:xpPerClick});
   }
   if (url.pathname === "/api/upgrade" && method === "POST") {
     const u = await getUser(db, tg);
@@ -265,7 +265,7 @@ async function api(request, env, url, tg) {
     for(const a of defs)if(a[3])await db.prepare("INSERT OR IGNORE INTO achievements(user_id,achievement_key) VALUES(?,?)").bind(u.id,a[0]).run();
     const achievements=await db.prepare("SELECT achievement_key,unlocked_at FROM achievements WHERE user_id=?").bind(u.id).all();
     const prog=progressionStats(u.xp||0);
-    return json({supply,userLevel:prog.level,xp:Number(u.xp||0),xpIntoLevel:prog.xpIntoLevel,xpNeeded:prog.xpNeeded,xpPerClick:Math.max(1,Number(u.level||1)),levelBonus:Math.max(0,Math.min(100,(prog.level-1)*100/999)),players:players.results||[],factions:factions.results||[],tasks:tasks.results||[],achievements:achievements.results||[],achievementDefs:defs.map(a=>({key:a[0],name:a[1],description:a[2],unlocked:a[3]}))});
+    return json({supply,userLevel:prog.level,xp:Number(u.xp||0),xpIntoLevel:prog.xpIntoLevel,xpNeeded:prog.xpNeeded,xpPerClick:1+(Math.max(0,Math.min(1000,Number(u.level||0)))*0.001),levelBonus:Math.max(0,Math.min(100,(prog.level-1)*100/999)),players:players.results||[],factions:factions.results||[],tasks:tasks.results||[],achievements:achievements.results||[],achievementDefs:defs.map(a=>({key:a[0],name:a[1],description:a[2],unlocked:a[3]}))});
   }
   if(url.pathname==="/api/task-claim"&&method==="POST"){
     const u=await getUser(db,tg),defs={clicks:{goal:50,reward:0.5},daily:{goal:1,reward:0.25},ads:{goal:1,reward:0.5},miners:{goal:1,reward:0.5}};
