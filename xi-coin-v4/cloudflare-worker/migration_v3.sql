@@ -1,0 +1,30 @@
+-- Xi Coin economy, ASIC miners, factions and chat
+ALTER TABLE users ADD COLUMN referral_paid INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS miners (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ user_id INTEGER NOT NULL,
+ miner_key TEXT NOT NULL,
+ last_claim_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS factions (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ name TEXT NOT NULL UNIQUE,
+ owner_id INTEGER NOT NULL,
+ created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS faction_members (
+ faction_id INTEGER NOT NULL,
+ user_id INTEGER NOT NULL UNIQUE,
+ joined_at TEXT DEFAULT CURRENT_TIMESTAMP,
+ PRIMARY KEY (faction_id,user_id)
+);
+CREATE TABLE IF NOT EXISTS chat_messages (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ user_id INTEGER NOT NULL,
+ username TEXT DEFAULT '',
+ message TEXT NOT NULL,
+ created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_miners_user ON miners(user_id);
+CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_messages(id DESC);
+CREATE INDEX IF NOT EXISTS idx_faction_members ON faction_members(faction_id);
