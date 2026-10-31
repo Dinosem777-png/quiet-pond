@@ -156,13 +156,7 @@ async function webhook(request, env) {
     if (update.message?.text?.trim().startsWith("/start")) {
       await telegram(env, "sendMessage", {
         chat_id: update.message.chat.id,
-        text: "Добро пожаловать в Xi Coin! Нажми кнопку ниже, чтобы открыть игру.",
-        reply_markup: {
-          inline_keyboard: [[{
-            text: "🪙 Открыть Xi Coin",
-            web_app: { url: "https://quiet-pond.pages.dev/" }
-          }]]
-        }
+        text: "Добро пожаловать в Xi Coin! Чтобы открыть игру, нажми кнопку Menu внизу чата."
       });
       return json({ ok: true });
     }
