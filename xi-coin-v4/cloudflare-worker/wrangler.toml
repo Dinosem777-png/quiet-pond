@@ -1,4 +1,4 @@
-name = "quiet-pond"
+name = "xi-coin-db"
 main = "src/index.js"
 compatibility_date = "2026-10-31"
 
