@@ -129,11 +129,18 @@ async function api(request, env, url, tg) {
   if (url.pathname === "/api/click" && method === "POST") {
     let u = await getUser(db, tg, body.ref);
     u = await regenerateEnergy(db, u);
-    const gain = (Number(u.click_power) / 3) * Number(u.vip_multiplier || 1);
+    const currentLevel = Number(u.player_level || 1);
+    const levelBonus = Math.max(0, Math.min(1, (currentLevel - 1) / 999));
+    const gain = (Number(u.click_power) / 3) * Number(u.vip_multiplier || 1) * (1 + levelBonus);
     const changed = await db.prepare("UPDATE users SET energy=energy-1,energy_updated_at=? WHERE id=? AND energy>0").bind(new Date().toISOString(),u.id).run();
     if(!changed.meta.changes)return json({error:"Нет энергии"},400);
     if(!(await issueCoins(db,u.id,gain))){await db.prepare("UPDATE users SET energy=energy+1 WHERE id=?").bind(u.id).run();return json({error:"Все 10 000 000 XI уже добыты. Произойдёт чудо! ✨"},400);}
-    await db.prepare("UPDATE users SET total_clicks=total_clicks+1, xp=MIN(99900,xp+1), player_level=MIN(1000,1+CAST((MIN(99900,xp+1))/100 AS INTEGER)) WHERE id=?").bind(u.id).run();
+    const nextXp = Math.min(99900, Number(u.xp || 0) + 1);
+    const nextLevel = Math.min(1000, 1 + Math.floor(nextXp / 100));
+    const nextBonus = Math.max(0, Math.min(1, (nextLevel - 1) / 999));
+    const energyScale = (1 + nextBonus) / (1 + levelBonus);
+    await db.prepare("UPDATE users SET total_clicks=total_clicks+1,xp=?,player_level=?,max_energy=CAST(ROUND(max_energy*?) AS INTEGER) WHERE id=?")
+      .bind(nextXp,nextLevel,energyScale,u.id).run();
     await bumpTask(db,u.id,"clicks",1);
     if(u.referrer_id)await issueCoins(db,u.referrer_id,gain*0.05);
     return json({user:await db.prepare("SELECT * FROM users WHERE id=?").bind(u.id).first()});
