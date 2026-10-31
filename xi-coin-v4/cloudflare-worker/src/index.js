@@ -44,7 +44,8 @@ const ITEMS = {
   coins100: { title: "210 XI", description: "Покупка 210 игровых монет Xi Coin", stars: 100, coins: 210 },
   coins300: { title: "840 XI", description: "Покупка 840 игровых монет Xi Coin", stars: 300, coins: 840 },
   coins900: { title: "5500 XI", description: "Покупка 5500 игровых монет Xi Coin", stars: 900, coins: 5500 },
-  passpremium: { title: "Премиум-пропуск Xi Coin", description: "Премиум-линия наград сезона", stars: 150 }
+  passpremium: { title: "Премиум-пропуск Xi Coin", description: "Премиум-линия наград сезона", stars: 150 },
+  factioncreate: { title: "Создание фракции", description: "Создание собственной фракции Xi Coin", stars: 20 }
 };
 async function telegram(env, method, payload) {
   const r = await fetch("https://api.telegram.org/bot" + env.BOT_TOKEN + "/" + method, {
@@ -290,11 +291,11 @@ async function api(request, env, url, tg) {
     const u = await getUser(db, tg);
     const miners = await db.prepare("SELECT miner_key, COUNT(*) AS count FROM miners WHERE user_id = ? GROUP BY miner_key").bind(u.id).all();
     const mineList = await db.prepare("SELECT m.id,m.miner_key,m.last_claim_at,COALESCE(l.level,1) AS level FROM miners m LEFT JOIN miner_levels l ON l.miner_id=m.id WHERE m.user_id = ?").bind(u.id).all();
-    const member = await db.prepare("SELECT f.id, f.name FROM faction_members m JOIN factions f ON f.id=m.faction_id WHERE m.user_id=?").bind(u.id).first();
-    const factions = await db.prepare("SELECT f.id,f.name,COUNT(m.user_id) AS members FROM factions f LEFT JOIN faction_members m ON m.faction_id=f.id GROUP BY f.id ORDER BY members DESC LIMIT 20").all();
+    const member = await db.prepare("SELECT f.id, f.name, f.owner_id, f.level FROM faction_members m JOIN factions f ON f.id=m.faction_id WHERE m.user_id=?").bind(u.id).first();
+    const factions = await db.prepare("SELECT f.id,f.name,f.level,COUNT(m.user_id) AS members FROM factions f LEFT JOIN faction_members m ON m.faction_id=f.id GROUP BY f.id ORDER BY members DESC LIMIT 20").all();
     const chat = await db.prepare("SELECT c.message,c.username,c.created_at FROM chat_messages c ORDER BY c.id DESC LIMIT 30").all();
-    const adsTotal=await db.prepare("SELECT COUNT(*) AS n FROM ads WHERE tg_id=?").bind(String(tg.id)).first(); const adProg=await db.prepare("SELECT energy_progress FROM ad_progress WHERE user_id=?").bind(u.id).first(); const ad50=await db.prepare("SELECT COUNT(*) AS n FROM miners WHERE user_id=? AND miner_key='ad50'").bind(u.id).first(); const ad100=await db.prepare("SELECT COUNT(*) AS n FROM miners WHERE user_id=? AND miner_key='ad100'").bind(u.id).first(); const rates={nano:0.005,pocket:0.02,starter:0.06,basic:0.08,pro:0.6,farm:5,ad50:0.05,ad100:0.1,rare:0.25,epic:1,legendary:4}; const baseHourly=(mineList.results||[]).reduce((s,m)=>s+(rates[m.miner_key]||0)*(1+0.1*(Number(m.level||1)-1)),0); const levelBonus=Math.max(0,Math.min(1,(Number(u.player_level||1)-1)/999)); const hourlyIncome=baseHourly*Number(u.vip_multiplier||1)*(1+levelBonus);
-    return json({baseHourly,hourlyIncome,vip: Number(u.vip_multiplier||1)>=2,level:Number(u.player_level||1),levelBonus:levelBonus*100,totalAds:adsTotal.n,energyProgress:adProg?.energy_progress||0,ad50:ad50.n,ad100:ad100.n,miners:mineList.results||[], faction:member||null, factions:factions.results||[], chat:(chat.results||[]).reverse(), catalog:[
+    const adsTotal=await db.prepare("SELECT COUNT(*) AS n FROM ads WHERE tg_id=?").bind(String(tg.id)).first(); const adProg=await db.prepare("SELECT energy_progress FROM ad_progress WHERE user_id=?").bind(u.id).first(); const ad50=await db.prepare("SELECT COUNT(*) AS n FROM miners WHERE user_id=? AND miner_key='ad50'").bind(u.id).first(); const ad100=await db.prepare("SELECT COUNT(*) AS n FROM miners WHERE user_id=? AND miner_key='ad100'").bind(u.id).first(); const rates={nano:0.005,pocket:0.02,starter:0.06,basic:0.08,pro:0.6,farm:5,ad50:0.05,ad100:0.1,rare:0.25,epic:1,legendary:4}; const baseHourly=(mineList.results||[]).reduce((s,m)=>s+(rates[m.miner_key]||0)*(1+0.1*(Number(m.level||1)-1)),0); const factionBonus=member?Math.max(0,Math.min(10,Number(member.level||1)))/100:0; const levelBonus=Math.max(0,Math.min(1,(Number(u.player_level||1)-1)/999)); const hourlyIncome=baseHourly*Number(u.vip_multiplier||1)*(1+levelBonus)*(1+factionBonus);
+    return json({baseHourly,hourlyIncome,vip: Number(u.vip_multiplier||1)>=2,level:Number(u.player_level||1),levelBonus:levelBonus*100,totalAds:adsTotal.n,energyProgress:adProg?.energy_progress||0,ad50:ad50.n,ad100:ad100.n,miners:mineList.results||[], faction:member?{...member,bonusPercent:Number(member.level||1),upgradeCost:Number(member.level||1)<10?1000*Math.pow(2,Number(member.level||1)-1):null}:null, factionBonusPercent:factionBonus*100, factions:factions.results||[], chat:(chat.results||[]).reverse(), catalog:[
       {key:"nano",name:"ASIC Nano",price:100,rate:0.005},
       {key:"pocket",name:"ASIC Pocket",price:500,rate:0.02},
       {key:"starter",name:"ASIC Starter",price:1500,rate:0.06},
@@ -352,7 +353,9 @@ async function api(request, env, url, tg) {
       const ml=await db.prepare("SELECT level FROM miner_levels WHERE miner_id=?").bind(m.id).first(); reward+=hours*(rates[m.miner_key]||0)*(1+0.1*(Number(ml?.level||1)-1));
     }
     const levelBonus=Math.max(0,Math.min(1,(Number(u.player_level||1)-1)/999));
-    reward*=Number(u.vip_multiplier||1)*(1+levelBonus);
+    const faction=await db.prepare("SELECT f.level FROM faction_members m JOIN factions f ON f.id=m.faction_id WHERE m.user_id=?").bind(u.id).first();
+    const factionBonus=faction?Math.max(0,Math.min(10,Number(faction.level||1)))/100;
+    reward*=Number(u.vip_multiplier||1)*(1+levelBonus)*(1+factionBonus);
     if(reward>0&&!(await issueCoins(db,u.id,reward)))return json({error:"Лимит XI достигнут"},400);
     for(const m of owned.results||[])await db.prepare("UPDATE miners SET last_claim_at=? WHERE id=?").bind(new Date().toISOString(),m.id).run();
     if(reward>0){await bumpTask(db,u.id,"miners",1);await db.prepare("INSERT INTO pass_progress(user_id,season,xp,claimed_level,premium) VALUES(?,'2026-11',10,0,0) ON CONFLICT(user_id,season) DO UPDATE SET xp=xp+10").bind(u.id).run();}
@@ -363,9 +366,22 @@ async function api(request, env, url, tg) {
     if(name.length<3||name.length>20) return json({error:"Название: от 3 до 20 символов"},400);
     const has=await db.prepare("SELECT faction_id FROM faction_members WHERE user_id=?").bind(u.id).first();
     if(has) return json({error:"Ты уже состоишь во фракции"},400);
-    try { const r=await db.prepare("INSERT INTO factions(name,owner_id) VALUES(?,?)").bind(name,u.id).run(); await db.prepare("INSERT INTO faction_members(faction_id,user_id) VALUES(?,?)").bind(r.meta.last_row_id,u.id).run(); }
-    catch(e){return json({error:"Такое название уже занято"},400)}
-    return json({ok:true});
+    const duplicate=await db.prepare("SELECT id FROM factions WHERE lower(name)=lower(?)").bind(name).first();
+    if(duplicate) return json({error:"Такое название уже занято"},400);
+    await db.prepare("INSERT INTO faction_creation_requests(user_id,name) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET name=excluded.name,created_at=CURRENT_TIMESTAMP").bind(u.id,name).run();
+    try { const payload="xi4:factioncreate:"+tg.id+":"+crypto.randomUUID(); const invoice=await telegram(env,"createInvoiceLink",{title:ITEMS.factioncreate.title,description:ITEMS.factioncreate.description,payload,currency:"XTR",prices:[{label:ITEMS.factioncreate.title,amount:ITEMS.factioncreate.stars}]}); return json({url:invoice}); }
+    catch(e) { return json({error:e.message},500); }
+  }
+  if (url.pathname === "/api/faction-upgrade" && method === "POST") {
+    const u=await getUser(db,tg); const member=await db.prepare("SELECT f.id,f.owner_id,f.level FROM faction_members m JOIN factions f ON f.id=m.faction_id WHERE m.user_id=?").bind(u.id).first();
+    if(!member)return json({error:"Сначала вступи во фракцию"},400);
+    if(Number(member.owner_id)!==Number(u.id))return json({error:"Улучшать фракцию может только создатель"},403);
+    const level=Math.max(1,Number(member.level||1)); if(level>=10)return json({error:"Фракция уже достигла максимального уровня"},400);
+    const cost=1000*Math.pow(2,level-1); const debit=await db.prepare("UPDATE users SET balance=balance-? WHERE id=? AND balance>=?").bind(cost,u.id,cost).run();
+    if(!debit.meta.changes)return json({error:"Недостаточно XI. Нужно "+cost+" XI"},400);
+    const upgraded=await db.prepare("UPDATE factions SET level=level+1 WHERE id=? AND level=?").bind(member.id,level).run();
+    if(!upgraded.meta.changes){await db.prepare("UPDATE users SET balance=balance+? WHERE id=?").bind(cost,u.id).run();return json({error:"Фракция уже была улучшена"},409);}
+    return json({ok:true,level:level+1,cost,bonus:level+1});
   }
   if (url.pathname === "/api/faction-join" && method === "POST") {
     const u=await getUser(db,tg); const has=await db.prepare("SELECT faction_id FROM faction_members WHERE user_id=?").bind(u.id).first();
@@ -418,6 +434,7 @@ async function webhook(request, env) {
         if (key === "energy") await env.DB.prepare("UPDATE users SET max_energy = max_energy + 5000, energy = energy + 5000 WHERE tg_id = ?").bind(tgId).run();
         if (key === "boost") await env.DB.prepare("UPDATE users SET vip_multiplier = 2, max_energy = CASE WHEN vip_multiplier < 2 THEN max_energy * 2 ELSE max_energy END, energy = CASE WHEN vip_multiplier < 2 THEN MIN(max_energy * 2, energy * 2) ELSE energy END WHERE tg_id = ?").bind(tgId).run();
         if (key === "passpremium") { const buyer=await env.DB.prepare("SELECT id FROM users WHERE tg_id=?").bind(tgId).first(); if(buyer){await env.DB.prepare("INSERT OR IGNORE INTO pass_progress(user_id,season,xp,claimed_level,premium) VALUES(?,'2026-11',0,0,0)").bind(buyer.id).run();await env.DB.prepare("UPDATE pass_progress SET premium=1 WHERE user_id=? AND season='2026-11'").bind(buyer.id).run();} }
+        if (key === "factioncreate") { const buyer=await env.DB.prepare("SELECT id FROM users WHERE tg_id=?").bind(tgId).first(); if(buyer){ const has=await env.DB.prepare("SELECT faction_id FROM faction_members WHERE user_id=?").bind(buyer.id).first(); const req=await env.DB.prepare("SELECT name FROM faction_creation_requests WHERE user_id=?").bind(buyer.id).first(); if(!has&&req){ try{ const f=await env.DB.prepare("INSERT INTO factions(name,owner_id,level) VALUES(?,?,1)").bind(req.name,buyer.id).run(); await env.DB.prepare("INSERT INTO faction_members(faction_id,user_id) VALUES(?,?)").bind(f.meta.last_row_id,buyer.id).run(); await env.DB.prepare("DELETE FROM faction_creation_requests WHERE user_id=?").bind(buyer.id).run(); }catch(e){} } } }
       }
     }
     return json({ ok: true });
