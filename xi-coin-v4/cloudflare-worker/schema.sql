@@ -1,0 +1,45 @@
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tg_id TEXT NOT NULL UNIQUE,
+  username TEXT DEFAULT '',
+  balance REAL NOT NULL DEFAULT 0,
+  energy INTEGER NOT NULL DEFAULT 1000,
+  max_energy INTEGER NOT NULL DEFAULT 1000,
+  click_power REAL NOT NULL DEFAULT 0.001,
+  level INTEGER NOT NULL DEFAULT 1,
+  ref_code TEXT UNIQUE,
+  referrer_id INTEGER,
+  vip_multiplier REAL NOT NULL DEFAULT 1,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS transfers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sender_id INTEGER NOT NULL,
+  receiver_id INTEGER NOT NULL,
+  amount REAL NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS daily (
+  user_id INTEGER NOT NULL,
+  day TEXT NOT NULL,
+  UNIQUE(user_id, day)
+);
+CREATE TABLE IF NOT EXISTS purchases (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tg_id TEXT NOT NULL,
+  payload TEXT NOT NULL UNIQUE,
+  stars INTEGER NOT NULL,
+  item TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS ads (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tg_id TEXT NOT NULL,
+  day TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(tg_id, day)
+);
+CREATE INDEX IF NOT EXISTS idx_users_balance ON users(balance DESC);
+CREATE INDEX IF NOT EXISTS idx_users_referrer ON users(referrer_id);
+CREATE INDEX IF NOT EXISTS idx_transfers_sender ON transfers(sender_id);
+CREATE INDEX IF NOT EXISTS idx_transfers_receiver ON transfers(receiver_id);
