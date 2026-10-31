@@ -105,6 +105,19 @@ async function regenerateEnergy(db, u) {
   }
   return u;
 }
+function progressionStats(totalXp) {
+  const cap = 100 * 999 + 5 * 999 * 998;
+  let xp = Math.max(0, Math.min(cap, Math.floor(Number(totalXp) || 0)));
+  let level = 1;
+  let remaining = xp;
+  let needed = 100;
+  while (level < 1000 && remaining >= needed) {
+    remaining -= needed;
+    level++;
+    needed = 100 + (level - 1) * 10;
+  }
+  return { level, xpIntoLevel: level >= 1000 ? needed : remaining, xpNeeded: needed, xpGainForClick: null };
+}
 function utcDay(date = new Date()) { return date.toISOString().slice(0, 10); }
 function previousDay(day) { const d = new Date(day + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() - 1); return utcDay(d); }
 async function requireUser(request, env) {
@@ -135,8 +148,11 @@ async function api(request, env, url, tg) {
     const changed = await db.prepare("UPDATE users SET energy=energy-1,energy_updated_at=? WHERE id=? AND energy>0").bind(new Date().toISOString(),u.id).run();
     if(!changed.meta.changes)return json({error:"Нет энергии"},400);
     if(!(await issueCoins(db,u.id,gain))){await db.prepare("UPDATE users SET energy=energy+1 WHERE id=?").bind(u.id).run();return json({error:"Все 10 000 000 XI уже добыты. Произойдёт чудо! ✨"},400);}
-    const nextXp = Math.min(99900, Number(u.xp || 0) + 1);
-    const nextLevel = Math.min(1000, 1 + Math.floor(nextXp / 100));
+    const xpPerClick = Math.max(1, Number(u.level || 1));
+    const xpCap = 100 * 999 + 5 * 999 * 998;
+    const nextXp = Math.min(xpCap, Number(u.xp || 0) + xpPerClick);
+    const nextProgress = progressionStats(nextXp);
+    const nextLevel = nextProgress.level;
     const nextBonus = Math.max(0, Math.min(1, (nextLevel - 1) / 999));
     const energyScale = (1 + nextBonus) / (1 + levelBonus);
     await db.prepare("UPDATE users SET total_clicks=total_clicks+1,xp=?,player_level=?,max_energy=CAST(ROUND(max_energy*?) AS INTEGER) WHERE id=?")
@@ -248,7 +264,8 @@ async function api(request, env, url, tg) {
     const defs=[["first_click","Первый клик","Сделай первый клик",Number(u.total_clicks)>=1],["click_100","Кликер","Сделай 100 кликов",Number(u.total_clicks)>=100],["click_1000","Мастер кликов","Сделай 1000 кликов",Number(u.total_clicks)>=1000],["first_miner","Первая ферма","Купи первый ASIC",Number(miners.n)>0],["ref_5","Вербовщик","Пригласи 5 игроков",Number(refs.n)>=5]];
     for(const a of defs)if(a[3])await db.prepare("INSERT OR IGNORE INTO achievements(user_id,achievement_key) VALUES(?,?)").bind(u.id,a[0]).run();
     const achievements=await db.prepare("SELECT achievement_key,unlocked_at FROM achievements WHERE user_id=?").bind(u.id).all();
-    return json({supply,userLevel:Number(u.player_level||1),xp:Number(u.xp||0),levelBonus:Math.max(0,Math.min(100,(Number(u.player_level||1)-1)*100/999)),players:players.results||[],factions:factions.results||[],tasks:tasks.results||[],achievements:achievements.results||[],achievementDefs:defs.map(a=>({key:a[0],name:a[1],description:a[2],unlocked:a[3]}))});
+    const prog=progressionStats(u.xp||0);
+    return json({supply,userLevel:prog.level,xp:Number(u.xp||0),xpIntoLevel:prog.xpIntoLevel,xpNeeded:prog.xpNeeded,xpPerClick:Math.max(1,Number(u.level||1)),levelBonus:Math.max(0,Math.min(100,(prog.level-1)*100/999)),players:players.results||[],factions:factions.results||[],tasks:tasks.results||[],achievements:achievements.results||[],achievementDefs:defs.map(a=>({key:a[0],name:a[1],description:a[2],unlocked:a[3]}))});
   }
   if(url.pathname==="/api/task-claim"&&method==="POST"){
     const u=await getUser(db,tg),defs={clicks:{goal:50,reward:0.5},daily:{goal:1,reward:0.25},ads:{goal:1,reward:0.5},miners:{goal:1,reward:0.5}};
