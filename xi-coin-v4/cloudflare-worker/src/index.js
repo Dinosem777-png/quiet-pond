@@ -153,6 +153,19 @@ async function webhook(request, env) {
       await telegram(env, "answerPreCheckoutQuery", { pre_checkout_query_id: update.pre_checkout_query.id, ok: true });
       return json({ ok: true });
     }
+    if (update.message?.text?.trim().startsWith("/start")) {
+      await telegram(env, "sendMessage", {
+        chat_id: update.message.chat.id,
+        text: "Добро пожаловать в Xi Coin! Нажми кнопку ниже, чтобы открыть игру.",
+        reply_markup: {
+          inline_keyboard: [[{
+            text: "🪙 Открыть Xi Coin",
+            web_app: { url: "https://quiet-pond.pages.dev/" }
+          }]]
+        }
+      });
+      return json({ ok: true });
+    }
     const payment = update.message?.successful_payment;
     if (payment) {
       const tgId = String(update.message.from.id);
