@@ -45,8 +45,18 @@ const ITEMS = {
   coins300: { title: "840 XI", description: "Покупка 840 игровых монет Xi Coin", stars: 300, coins: 840 },
   coins900: { title: "5500 XI", description: "Покупка 5500 игровых монет Xi Coin", stars: 900, coins: 5500 },
   passpremium: { title: "Премиум-пропуск Xi Coin", description: "Премиум-линия наград сезона", stars: 150 },
-  factioncreate: { title: "Создание фракции", description: "Создание собственной фракции Xi Coin", stars: 20 }
+  factioncreate: { title: "Создание фракции", description: "Создание собственной фракции Xi Coin", stars: 20 },
+  title_immortal:{title:"⚔️ БЕССМЕРТНЫЙ",description:"Титул в профиле · бонус +2%",stars:50,cosmetic:"title",bonus:2},
+  title_diamond:{title:"💎 АЛМАЗНЫЙ ВЛАСТЕЛИН",description:"Титул в профиле · бонус +3%",stars:100,cosmetic:"title",bonus:3},
+  title_emperor:{title:"👑 ИМПЕРАТОР XI",description:"Титул в профиле · бонус +5%",stars:200,cosmetic:"title",bonus:5},
+  title_chaos:{title:"🔥 ПОВЕЛИТЕЛЬ ХАОСА",description:"Титул в профиле · бонус +8%",stars:350,cosmetic:"title",bonus:8},
+  title_universe:{title:"🌌 БОГ ВСЕЛЕННОЙ",description:"Титул в профиле · бонус +10%",stars:500,cosmetic:"title",bonus:10},
+  color_red:{title:"Красный ник",description:"Цвет ника в чате",stars:25,cosmetic:"color"},
+  color_blue:{title:"Синий ник",description:"Цвет ника в чате",stars:50,cosmetic:"color"},
+  color_orange:{title:"Оранжевый ник",description:"Цвет ника в чате",stars:100,cosmetic:"color"},
+  color_purple:{title:"Фиолетовый ник",description:"Цвет ника в чате",stars:200,cosmetic:"color"}
 };
+const COSMETIC_COLORS={color_red:"#ff4d4d",color_blue:"#4da3ff",color_orange:"#ff9d42",color_purple:"#bd72ff"};
 async function telegram(env, method, payload) {
   const r = await fetch("https://api.telegram.org/bot" + env.BOT_TOKEN + "/" + method, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
@@ -157,7 +167,8 @@ async function api(request, env, url, tg) {
     u = await regenerateEnergy(db, u);
     const currentLevel = Number(u.player_level || 1);
     const levelBonus = Math.max(0, Math.min(1, (currentLevel - 1) / 999));
-    const gain = (Number(u.click_power) / 3) * Number(u.vip_multiplier || 1) * (1 + levelBonus);
+    const titleRow=await db.prepare("SELECT item_key FROM user_cosmetics WHERE user_id=? AND item_type='title' AND equipped=1").bind(u.id).first();const titleBonus=Number(ITEMS[titleRow?.item_key]?.bonus||0)/100;
+    const gain = (Number(u.click_power) / 3) * Number(u.vip_multiplier || 1) * (1 + levelBonus)*(1+titleBonus);
     const changed = await db.prepare("UPDATE users SET energy=energy-1,energy_updated_at=? WHERE id=? AND energy>0").bind(new Date().toISOString(),u.id).run();
     if(!changed.meta.changes)return json({error:"Нет энергии"},400);
     if(!(await issueCoins(db,u.id,gain))){await db.prepare("UPDATE users SET energy=energy+1 WHERE id=?").bind(u.id).run();return json({error:"Все 10 000 000 XI уже добыты. Произойдёт чудо! ✨"},400);}
@@ -275,9 +286,52 @@ async function api(request, env, url, tg) {
     await db.prepare("INSERT INTO miner_levels(user_id,miner_id,level) VALUES(?,?,?) ON CONFLICT(miner_id) DO UPDATE SET level=excluded.level").bind(u.id,id,level+1).run();
     return json({ok:true,level:level+1,cost});
   }
+  if (url.pathname === "/api/cosmetics" && method === "GET") {
+    const u=await getUser(db,tg);
+    const owned=await db.prepare("SELECT item_key,item_type,equipped FROM user_cosmetics WHERE user_id=?").bind(u.id).all();
+    const active={title:owned.results?.find(x=>x.item_type==="title"&&x.equipped)?.item_key||null,color:owned.results?.find(x=>x.item_type==="color"&&x.equipped)?.item_key||null};
+    return json({owned:owned.results||[],active,catalog:Object.entries(ITEMS).filter(([,v])=>v.cosmetic).map(([key,v])=>({key,...v,color:COSMETIC_COLORS[key]||null}))});
+  }
+  if (url.pathname === "/api/cosmetic-equip" && method === "POST") {
+    const u=await getUser(db,tg),key=String(body.key||"");
+    const item=ITEMS[key];
+    if(!item?.cosmetic)return json({error:"Неизвестный предмет"},400);
+    const owned=await db.prepare("SELECT item_key FROM user_cosmetics WHERE user_id=? AND item_key=?").bind(u.id,key).first();
+    if(!owned)return json({error:"Предмета нет в рюкзаке"},400);
+    await db.prepare("UPDATE user_cosmetics SET equipped=0 WHERE user_id=? AND item_type=?").bind(u.id,item.cosmetic).run();
+    await db.prepare("UPDATE user_cosmetics SET equipped=1 WHERE user_id=? AND item_key=?").bind(u.id,key).run();
+    return json({ok:true});
+  }
+  if (url.pathname === "/api/item-transfer" && method === "POST") {
+    const u=await getUser(db,tg),to=String(body.to||"").replace(/^@/,"").trim();
+    const receiver=await db.prepare("SELECT * FROM users WHERE lower(username)=lower(?)").bind(to).first();
+    if(!receiver||receiver.id===u.id)return json({error:"Игрок не найден или это ты"},400);
+    const debit=await db.prepare("UPDATE users SET balance=balance-50 WHERE id=? AND balance>=50").bind(u.id).run();
+    if(!debit.meta.changes)return json({error:"Для передачи нужно 50 XI комиссии"},400);
+    try {
+      if(body.item_type==="miner"){
+        const id=Number(body.miner_id);
+        const owned=await db.prepare("SELECT id FROM miners WHERE id=? AND user_id=?").bind(id,u.id).first();
+        if(!owned)throw new Error("ASIC не найден в рюкзаке");
+        await db.prepare("DELETE FROM miner_levels WHERE miner_id=?").bind(id).run();
+        await db.prepare("UPDATE miners SET user_id=?,last_claim_at=? WHERE id=? AND user_id=?").bind(receiver.id,new Date().toISOString(),id,u.id).run();
+      } else {
+        const key=String(body.item_key||""),item=ITEMS[key];
+        if(!item?.cosmetic||item.cosmetic!==body.item_type)throw new Error("Неверный тип предмета");
+        const owned=await db.prepare("DELETE FROM user_cosmetics WHERE user_id=? AND item_key=?").bind(u.id,key).run();
+        if(!owned.meta.changes)throw new Error("Предмет не найден в рюкзаке");
+        await db.prepare("INSERT OR IGNORE INTO user_cosmetics(user_id,item_key,item_type,equipped) VALUES(?,?,?,0)").bind(receiver.id,key,item.cosmetic).run();
+      }
+      return json({ok:true,fee:50,user:await db.prepare("SELECT * FROM users WHERE id=?").bind(u.id).first()});
+    } catch(e) {
+      await db.prepare("UPDATE users SET balance=balance+50 WHERE id=?").bind(u.id).run();
+      return json({error:e.message},400);
+    }
+  }
   if (url.pathname === "/api/buy" && method === "POST") {
     const item = ITEMS[String(body.item || "")];
     if (!item || !env.BOT_TOKEN) return json({ error: "Покупки пока не настроены" }, 400);
+    if(item.cosmetic){const u=await getUser(db,tg);const owned=await db.prepare("SELECT item_key FROM user_cosmetics WHERE user_id=? AND item_key=?").bind(u.id,body.item).first();if(owned)return json({error:"Этот предмет уже есть в рюкзаке"},400);}
     const payload = "xi4:" + body.item + ":" + tg.id + ":" + crypto.randomUUID();
     try {
       const invoice = await telegram(env, "createInvoiceLink", {
@@ -293,7 +347,7 @@ async function api(request, env, url, tg) {
     const mineList = await db.prepare("SELECT m.id,m.miner_key,m.last_claim_at,COALESCE(l.level,1) AS level FROM miners m LEFT JOIN miner_levels l ON l.miner_id=m.id WHERE m.user_id = ?").bind(u.id).all();
     const member = await db.prepare("SELECT f.id, f.name, f.owner_id, f.level FROM faction_members m JOIN factions f ON f.id=m.faction_id WHERE m.user_id=?").bind(u.id).first();
     const factions = await db.prepare("SELECT f.id,f.name,f.level,COUNT(m.user_id) AS members FROM factions f LEFT JOIN faction_members m ON m.faction_id=f.id GROUP BY f.id ORDER BY members DESC LIMIT 20").all();
-    const chat = await db.prepare("SELECT c.message,c.username,c.created_at FROM chat_messages c ORDER BY c.id DESC LIMIT 30").all();
+    const chat = await db.prepare("SELECT c.message,c.username,c.created_at,uc.item_key AS title_key,cc.item_key AS color_key FROM chat_messages c LEFT JOIN user_cosmetics uc ON uc.user_id=c.user_id AND uc.item_type='title' AND uc.equipped=1 LEFT JOIN user_cosmetics cc ON cc.user_id=c.user_id AND cc.item_type='color' AND cc.equipped=1 ORDER BY c.id DESC LIMIT 30").all();
     const adsTotal=await db.prepare("SELECT COUNT(*) AS n FROM ads WHERE tg_id=?").bind(String(tg.id)).first(); const adProg=await db.prepare("SELECT energy_progress FROM ad_progress WHERE user_id=?").bind(u.id).first(); const ad50=await db.prepare("SELECT COUNT(*) AS n FROM miners WHERE user_id=? AND miner_key='ad50'").bind(u.id).first(); const ad100=await db.prepare("SELECT COUNT(*) AS n FROM miners WHERE user_id=? AND miner_key='ad100'").bind(u.id).first(); const rates={nano:0.005,pocket:0.02,starter:0.06,basic:0.08,pro:0.6,farm:5,ad50:0.05,ad100:0.1,rare:0.25,epic:1,legendary:4}; const baseHourly=(mineList.results||[]).reduce((s,m)=>s+(rates[m.miner_key]||0)*(1+0.1*(Number(m.level||1)-1)),0); const factionBonus=member?Math.max(0,Math.min(10,Number(member.level||1)))/100:0; const levelBonus=Math.max(0,Math.min(1,(Number(u.player_level||1)-1)/999)); const hourlyIncome=baseHourly*Number(u.vip_multiplier||1)*(1+levelBonus)*(1+factionBonus);
     return json({baseHourly,hourlyIncome,vip: Number(u.vip_multiplier||1)>=2,level:Number(u.player_level||1),levelBonus:levelBonus*100,totalAds:adsTotal.n,energyProgress:adProg?.energy_progress||0,ad50:ad50.n,ad100:ad100.n,miners:mineList.results||[], faction:member?{...member,bonusPercent:Number(member.level||1),upgradeCost:Number(member.level||1)<10?1000*Math.pow(2,Number(member.level||1)-1):null}:null, factionBonusPercent:factionBonus*100, factions:factions.results||[], chat:(chat.results||[]).reverse(), catalog:[
       {key:"nano",name:"ASIC Nano",price:100,rate:0.005},
@@ -353,9 +407,10 @@ async function api(request, env, url, tg) {
       const ml=await db.prepare("SELECT level FROM miner_levels WHERE miner_id=?").bind(m.id).first(); reward+=hours*(rates[m.miner_key]||0)*(1+0.1*(Number(ml?.level||1)-1));
     }
     const levelBonus=Math.max(0,Math.min(1,(Number(u.player_level||1)-1)/999));
+    const titleRow=await db.prepare("SELECT item_key FROM user_cosmetics WHERE user_id=? AND item_type='title' AND equipped=1").bind(u.id).first();const titleBonus=Number(ITEMS[titleRow?.item_key]?.bonus||0)/100;
     const faction=await db.prepare("SELECT f.level FROM faction_members m JOIN factions f ON f.id=m.faction_id WHERE m.user_id=?").bind(u.id).first();
     const factionBonus=faction?Math.max(0,Math.min(10,Number(faction.level||1)))/100;
-    reward*=Number(u.vip_multiplier||1)*(1+levelBonus)*(1+factionBonus);
+    reward*=Number(u.vip_multiplier||1)*(1+levelBonus)*(1+factionBonus)*(1+titleBonus);
     if(reward>0&&!(await issueCoins(db,u.id,reward)))return json({error:"Лимит XI достигнут"},400);
     for(const m of owned.results||[])await db.prepare("UPDATE miners SET last_claim_at=? WHERE id=?").bind(new Date().toISOString(),m.id).run();
     if(reward>0){await bumpTask(db,u.id,"miners",1);await db.prepare("INSERT INTO pass_progress(user_id,season,xp,claimed_level,premium) VALUES(?,'2026-11',10,0,0) ON CONFLICT(user_id,season) DO UPDATE SET xp=xp+10").bind(u.id).run();}
@@ -426,6 +481,7 @@ async function webhook(request, env) {
       if (!exists) {
         await env.DB.prepare("INSERT OR IGNORE INTO purchases (tg_id, payload, stars, item) VALUES (?, ?, ?, ?)")
           .bind(tgId, payment.invoice_payload, payment.total_amount, key).run();
+        if(item.cosmetic){const buyer=await env.DB.prepare("SELECT id FROM users WHERE tg_id=?").bind(tgId).first();if(buyer)await env.DB.prepare("INSERT OR IGNORE INTO user_cosmetics(user_id,item_key,item_type,equipped) VALUES(?,?,?,0)").bind(buyer.id,key,item.cosmetic).run();}
         if (item.coins) {
           const buyer = await env.DB.prepare("SELECT id FROM users WHERE tg_id = ?").bind(tgId).first();
           if (buyer) await issueCoins(env.DB,buyer.id,item.coins);
