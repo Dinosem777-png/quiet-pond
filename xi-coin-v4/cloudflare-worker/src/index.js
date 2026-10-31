@@ -61,6 +61,21 @@ async function getUser(db, tg, ref) {
     .bind(String(tg.id), tg.username || "", code, referrerId).run();
   return await db.prepare("SELECT * FROM users WHERE tg_id = ?").bind(String(tg.id)).first();
 }
+async function regenerateEnergy(db, u) {
+  const now = Date.now();
+  const last = Date.parse(String(u.energy_updated_at || new Date(now).toISOString()).replace(" ", "T") + (String(u.energy_updated_at || "").includes("Z") ? "" : "Z"));
+  const elapsed = Math.max(0, now - (Number.isFinite(last) ? last : now));
+  const gained = Math.floor(elapsed / 60000);
+  if (gained > 0 || Number(u.energy) > Number(u.max_energy)) {
+    const energy = Math.min(Number(u.max_energy), Number(u.energy) + gained);
+    await db.prepare("UPDATE users SET energy = ?, energy_updated_at = ? WHERE id = ?")
+      .bind(energy, new Date(now).toISOString(), u.id).run();
+    u = { ...u, energy, energy_updated_at: new Date(now).toISOString() };
+  }
+  return u;
+}
+function utcDay(date = new Date()) { return date.toISOString().slice(0, 10); }
+function previousDay(day) { const d = new Date(day + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() - 1); return utcDay(d); }
 async function requireUser(request, env) {
   const auth = request.headers.get("Authorization") || "";
   const initData = auth.replace(/^tma\s+/i, "");
@@ -72,16 +87,19 @@ async function api(request, env, url, tg) {
   const method = request.method;
   const body = method === "POST" ? await request.json().catch(() => ({})) : {};
   if (url.pathname === "/api/me" && method === "GET") {
-    const u = await getUser(db, tg, url.searchParams.get("ref"));
+    let u = await getUser(db, tg, url.searchParams.get("ref"));
+    u = await regenerateEnergy(db, u);
     const rating = await db.prepare("SELECT username, balance FROM users ORDER BY balance DESC LIMIT 20").all();
     const refs = await db.prepare("SELECT COUNT(*) AS n FROM users WHERE referrer_id = ?").bind(u.id).first();
-    const adCount = await db.prepare("SELECT COUNT(*) AS n FROM ads WHERE tg_id = ? AND day = ?").bind(String(tg.id), new Date().toISOString().slice(0, 10)).first();
-    return json({ user: u, rating: rating.results || [], referrals: refs.n, adCount: adCount.n, items: ITEMS });
+    const today = utcDay();
+    const adCount = await db.prepare("SELECT COUNT(*) AS n FROM ads WHERE tg_id = ? AND day = ?").bind(String(tg.id), today).first();
+    return json({ user: u, rating: rating.results || [], referrals: refs.n, adCount: adCount.n, dailyStreak: u.daily_streak || 0, dailyAvailable: u.last_daily_day !== today, items: ITEMS });
   }
   if (url.pathname === "/api/click" && method === "POST") {
-    const u = await getUser(db, tg, body.ref);
+    let u = await getUser(db, tg, body.ref);
+    u = await regenerateEnergy(db, u);
     const gain = Number(u.click_power) * Number(u.vip_multiplier || 1);
-    const changed = await db.prepare("UPDATE users SET balance = balance + ?, energy = energy - 1 WHERE id = ? AND energy > 0").bind(gain, u.id).run();
+    const changed = await db.prepare("UPDATE users SET balance = balance + ?, energy = energy - 1, energy_updated_at = ? WHERE id = ? AND energy > 0").bind(gain, new Date().toISOString(), u.id).run();
     if (!changed.meta.changes) return json({ error: "Нет энергии" }, 400);
     if (u.referrer_id) await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").bind(gain * 0.05, u.referrer_id).run();
     return json({ user: await db.prepare("SELECT * FROM users WHERE id = ?").bind(u.id).first() });
@@ -114,11 +132,16 @@ async function api(request, env, url, tg) {
   }
   if (url.pathname === "/api/daily" && method === "POST") {
     const u = await getUser(db, tg);
-    const day = new Date().toISOString().slice(0, 10);
-    const r = await db.prepare("INSERT OR IGNORE INTO daily (user_id, day) VALUES (?, ?)").bind(u.id, day).run();
-    if (!r.meta.changes) return json({ error: "Сегодня уже получено" }, 400);
-    await db.prepare("UPDATE users SET balance = balance + 1 WHERE id = ?").bind(u.id).run();
-    return json({ user: await db.prepare("SELECT * FROM users WHERE id = ?").bind(u.id).first() });
+    const day = utcDay();
+    const yesterday = previousDay(day);
+    const streak = u.last_daily_day === yesterday ? Math.min(7, Number(u.daily_streak || 0) + 1) : 1;
+    const rewards = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
+    const reward = rewards[streak - 1];
+    const claimed = await db.prepare("INSERT OR IGNORE INTO daily (user_id, day) VALUES (?, ?)").bind(u.id, day).run();
+    if (!claimed.meta.changes) return json({ error: "Сегодня бонус уже получен" }, 400);
+    await db.prepare("UPDATE users SET balance = balance + ?, daily_streak = ?, last_daily_day = ? WHERE id = ?")
+      .bind(reward, streak, day, u.id).run();
+    return json({ user: await db.prepare("SELECT * FROM users WHERE id = ?").bind(u.id).first(), dailyReward: reward });
   }
   if (url.pathname === "/api/ad-reward" && method === "POST") {
     const u = await getUser(db, tg);
