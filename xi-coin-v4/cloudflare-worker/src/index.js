@@ -307,6 +307,9 @@ async function api(request, env, url, tg) {
     const u=await getUser(db,tg);
     const supply=await db.prepare("SELECT minted,max_supply FROM economy_state WHERE id=1").first();
     const players=await db.prepare("SELECT username,balance FROM users ORDER BY balance DESC LIMIT 20").all();
+    const levelPlayers=await db.prepare("SELECT username,player_level FROM users ORDER BY player_level DESC,id ASC LIMIT 20").all();
+    const seasonPlayers=await db.prepare("SELECT u.username,p.xp FROM pass_progress p JOIN users u ON u.id=p.user_id WHERE p.season='2026-11' ORDER BY p.xp DESC LIMIT 20").all();
+    const farmPlayers=await db.prepare("SELECT u.username,COALESCE(SUM(CASE m.miner_key WHEN 'nano' THEN 0.005 WHEN 'pocket' THEN 0.02 WHEN 'starter' THEN 0.06 WHEN 'basic' THEN 0.08 WHEN 'pro' THEN 0.6 WHEN 'farm' THEN 5 WHEN 'ad50' THEN 0.05 WHEN 'ad100' THEN 0.1 WHEN 'rare' THEN 0.25 WHEN 'epic' THEN 1 WHEN 'legendary' THEN 4 ELSE 0 END*(1+0.1*(COALESCE(l.level,1)-1)),0) AS power FROM users u LEFT JOIN miners m ON m.user_id=u.id LEFT JOIN miner_levels l ON l.miner_id=m.id GROUP BY u.id ORDER BY power DESC LIMIT 20").all();
     const factions=await db.prepare("SELECT f.name,COUNT(m.user_id) AS members,COALESCE(SUM(u.balance),0) AS score FROM factions f LEFT JOIN faction_members m ON m.faction_id=f.id LEFT JOIN users u ON u.id=m.user_id GROUP BY f.id ORDER BY score DESC LIMIT 20").all();
     const tasks=await db.prepare("SELECT task_key,progress,claimed FROM daily_task_progress WHERE user_id=? AND day=?").bind(u.id,utcDay()).all();
     const miners=await db.prepare("SELECT COUNT(*) AS n FROM miners WHERE user_id=?").bind(u.id).first();
@@ -315,7 +318,7 @@ async function api(request, env, url, tg) {
     for(const a of defs)if(a[3])await db.prepare("INSERT OR IGNORE INTO achievements(user_id,achievement_key) VALUES(?,?)").bind(u.id,a[0]).run();
     const achievements=await db.prepare("SELECT achievement_key,unlocked_at FROM achievements WHERE user_id=?").bind(u.id).all();
     const prog=progressionStats(u.xp||0);
-    return json({supply,userLevel:prog.level,xp:Number(u.xp||0),xpIntoLevel:prog.xpIntoLevel,xpNeeded:prog.xpNeeded,xpPerClick:1+(Math.max(0,Math.min(1000,Number(u.level||1)-1))*0.1),levelBonus:Math.max(0,Math.min(100,(prog.level-1)*100/999)),players:players.results||[],factions:factions.results||[],tasks:tasks.results||[],achievements:achievements.results||[],achievementDefs:defs.map(a=>({key:a[0],name:a[1],description:a[2],unlocked:a[3]}))});
+    return json({supply,userLevel:prog.level,xp:Number(u.xp||0),xpIntoLevel:prog.xpIntoLevel,xpNeeded:prog.xpNeeded,xpPerClick:1+(Math.max(0,Math.min(1000,Number(u.level||1)-1))*0.1),levelBonus:Math.max(0,Math.min(100,(prog.level-1)*100/999)),players:players.results||[],levelPlayers:levelPlayers.results||[],seasonPlayers:seasonPlayers.results||[],farmPlayers:farmPlayers.results||[],factions:factions.results||[],tasks:tasks.results||[],achievements:achievements.results||[],achievementDefs:defs.map(a=>({key:a[0],name:a[1],description:a[2],unlocked:a[3]}))});
   }
   if(url.pathname==="/api/task-claim"&&method==="POST"){
     const u=await getUser(db,tg),defs={clicks:{goal:50,reward:0.5},daily:{goal:1,reward:0.25},ads:{goal:1,reward:0.5},miners:{goal:1,reward:0.5}};
