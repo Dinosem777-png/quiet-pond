@@ -48,6 +48,17 @@ async function telegram(env, method, payload) {
   if (!j.ok) throw new Error(j.description || "Telegram API error");
   return j.result;
 }
+async function issueCoins(db, userId, amount) {
+  amount=Number(amount);
+  if(!Number.isFinite(amount)||amount<=0)return true;
+  const state=await db.prepare("UPDATE economy_state SET minted=minted+? WHERE id=1 AND minted+?<=max_supply RETURNING minted").bind(amount,amount).first();
+  if(!state)return false;
+  await db.prepare("UPDATE users SET balance=balance+? WHERE id=?").bind(amount,userId).run();
+  return true;
+}
+async function bumpTask(db,userId,key,amount=1) {
+  await db.prepare("INSERT INTO daily_task_progress(user_id,day,task_key,progress) VALUES(?,?,?,?) ON CONFLICT(user_id,day,task_key) DO UPDATE SET progress=progress+excluded.progress").bind(userId,utcDay(),key,amount).run();
+}
 async function getUser(db, tg, ref) {
   let u = await db.prepare("SELECT * FROM users WHERE tg_id = ?").bind(String(tg.id)).first();
   if (u) return u;
@@ -60,7 +71,7 @@ async function getUser(db, tg, ref) {
   const inserted = await db.prepare("INSERT OR IGNORE INTO users (tg_id, username, ref_code, referrer_id) VALUES (?, ?, ?, ?)")
     .bind(String(tg.id), tg.username || "", code, referrerId).run();
   if (inserted.meta.changes && referrerId) {
-    await db.prepare("UPDATE users SET balance = balance + 1 WHERE id = ?").bind(referrerId).run();
+    await issueCoins(db, referrerId, 1);
     await db.prepare("UPDATE users SET referral_paid = 1 WHERE tg_id = ?").bind(String(tg.id)).run();
   }
   return await db.prepare("SELECT * FROM users WHERE tg_id = ?").bind(String(tg.id)).first();
@@ -107,10 +118,13 @@ async function api(request, env, url, tg) {
     let u = await getUser(db, tg, body.ref);
     u = await regenerateEnergy(db, u);
     const gain = (Number(u.click_power) / 3) * Number(u.vip_multiplier || 1);
-    const changed = await db.prepare("UPDATE users SET balance = balance + ?, energy = energy - 1, energy_updated_at = ? WHERE id = ? AND energy > 0").bind(gain, new Date().toISOString(), u.id).run();
-    if (!changed.meta.changes) return json({ error: "Нет энергии" }, 400);
-    if (u.referrer_id) await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").bind(gain * 0.05, u.referrer_id).run();
-    return json({ user: await db.prepare("SELECT * FROM users WHERE id = ?").bind(u.id).first() });
+    const changed = await db.prepare("UPDATE users SET energy=energy-1,energy_updated_at=? WHERE id=? AND energy>0").bind(new Date().toISOString(),u.id).run();
+    if(!changed.meta.changes)return json({error:"Нет энергии"},400);
+    if(!(await issueCoins(db,u.id,gain))){await db.prepare("UPDATE users SET energy=energy+1 WHERE id=?").bind(u.id).run();return json({error:"Все 10 000 000 XI уже добыты. Произойдёт чудо! ✨"},400);}
+    await db.prepare("UPDATE users SET total_clicks=total_clicks+1 WHERE id=?").bind(u.id).run();
+    await bumpTask(db,u.id,"clicks",1);
+    if(u.referrer_id)await issueCoins(db,u.referrer_id,gain*0.05);
+    return json({user:await db.prepare("SELECT * FROM users WHERE id=?").bind(u.id).first()});
   }
   if (url.pathname === "/api/upgrade" && method === "POST") {
     const u = await getUser(db, tg);
@@ -147,18 +161,20 @@ async function api(request, env, url, tg) {
     const reward = rewards[streak - 1];
     const claimed = await db.prepare("INSERT OR IGNORE INTO daily (user_id, day) VALUES (?, ?)").bind(u.id, day).run();
     if (!claimed.meta.changes) return json({ error: "Сегодня бонус уже получен" }, 400);
-    await db.prepare("UPDATE users SET balance = balance + ?, daily_streak = ?, last_daily_day = ? WHERE id = ?")
-      .bind(reward, streak, day, u.id).run();
-    return json({ user: await db.prepare("SELECT * FROM users WHERE id = ?").bind(u.id).first(), dailyReward: reward });
+    if(!(await issueCoins(db,u.id,reward))){await db.prepare("DELETE FROM daily WHERE user_id=? AND day=?").bind(u.id,day).run();return json({error:"Лимит 10 000 000 XI достигнут"},400);}
+    await db.prepare("UPDATE users SET daily_streak=?,last_daily_day=? WHERE id=?").bind(streak,day,u.id).run();
+    await bumpTask(db,u.id,"daily",1);
+    return json({user:await db.prepare("SELECT * FROM users WHERE id=?").bind(u.id).first(),dailyReward:reward});
   }
   if (url.pathname === "/api/ad-reward" && method === "POST") {
     const u = await getUser(db, tg);
     const day = new Date().toISOString().slice(0, 10);
     const count = await db.prepare("SELECT COUNT(*) AS n FROM ads WHERE tg_id = ? AND day = ?").bind(String(tg.id), day).first();
     if (count.n >= 20) return json({ error: "Лимит рекламы на сегодня: 20" }, 429);
+    if(!(await issueCoins(db,u.id,1)))return json({error:"Лимит 10 000 000 XI достигнут"},400);
     await db.prepare("INSERT INTO ads (tg_id, day) VALUES (?, ?)").bind(String(tg.id), day).run();
-    await db.prepare("UPDATE users SET balance = balance + 1 WHERE id = ?").bind(u.id).run();
-    return json({ user: await db.prepare("SELECT * FROM users WHERE id = ?").bind(u.id).first(), reward: 1 });
+    await bumpTask(db,u.id,"ads",1);
+    return json({user:await db.prepare("SELECT * FROM users WHERE id=?").bind(u.id).first(),reward:1});
   }
   if (url.pathname === "/api/buy" && method === "POST") {
     const item = ITEMS[String(body.item || "")];
@@ -185,6 +201,29 @@ async function api(request, env, url, tg) {
       {key:"farm",name:"ASIC Farm",price:100000,rate:5}
     ]});
   }
+  if(url.pathname==="/api/progression"&&method==="GET"){
+    const u=await getUser(db,tg);
+    const supply=await db.prepare("SELECT minted,max_supply FROM economy_state WHERE id=1").first();
+    const players=await db.prepare("SELECT username,balance FROM users ORDER BY balance DESC LIMIT 20").all();
+    const factions=await db.prepare("SELECT f.name,COUNT(m.user_id) AS members,COALESCE(SUM(u.balance),0) AS score FROM factions f LEFT JOIN faction_members m ON m.faction_id=f.id LEFT JOIN users u ON u.id=m.user_id GROUP BY f.id ORDER BY score DESC LIMIT 20").all();
+    const tasks=await db.prepare("SELECT task_key,progress,claimed FROM daily_task_progress WHERE user_id=? AND day=?").bind(u.id,utcDay()).all();
+    const miners=await db.prepare("SELECT COUNT(*) AS n FROM miners WHERE user_id=?").bind(u.id).first();
+    const refs=await db.prepare("SELECT COUNT(*) AS n FROM users WHERE referrer_id=?").bind(u.id).first();
+    const defs=[["first_click","Первый клик","Сделай первый клик",Number(u.total_clicks)>=1],["click_100","Кликер","Сделай 100 кликов",Number(u.total_clicks)>=100],["click_1000","Мастер кликов","Сделай 1000 кликов",Number(u.total_clicks)>=1000],["first_miner","Первая ферма","Купи первый ASIC",Number(miners.n)>0],["ref_5","Вербовщик","Пригласи 5 игроков",Number(refs.n)>=5]];
+    for(const a of defs)if(a[3])await db.prepare("INSERT OR IGNORE INTO achievements(user_id,achievement_key) VALUES(?,?)").bind(u.id,a[0]).run();
+    const achievements=await db.prepare("SELECT achievement_key,unlocked_at FROM achievements WHERE user_id=?").bind(u.id).all();
+    return json({supply,players:players.results||[],factions:factions.results||[],tasks:tasks.results||[],achievements:achievements.results||[],achievementDefs:defs.map(a=>({key:a[0],name:a[1],description:a[2],unlocked:a[3]}))});
+  }
+  if(url.pathname==="/api/task-claim"&&method==="POST"){
+    const u=await getUser(db,tg),defs={clicks:{goal:50,reward:0.5},daily:{goal:1,reward:0.25},ads:{goal:1,reward:0.5},miners:{goal:1,reward:0.5}};
+    const key=String(body.task||""),def=defs[key];if(!def)return json({error:"Задание не найдено"},400);
+    const row=await db.prepare("SELECT progress,claimed FROM daily_task_progress WHERE user_id=? AND day=? AND task_key=?").bind(u.id,utcDay(),key).first();
+    if(!row||row.progress<def.goal)return json({error:"Задание ещё не выполнено"},400);
+    const claim=await db.prepare("UPDATE daily_task_progress SET claimed=1 WHERE user_id=? AND day=? AND task_key=? AND claimed=0").bind(u.id,utcDay(),key).run();
+    if(!claim.meta.changes)return json({error:"Награда уже получена"},400);
+    if(!(await issueCoins(db,u.id,def.reward)))return json({error:"Лимит XI достигнут"},400);
+    return json({ok:true,reward:def.reward});
+  }
   if (url.pathname === "/api/miner-buy" && method === "POST") {
     const u=await getUser(db,tg);
     const catalog={basic:{price:2500},pro:{price:15000},farm:{price:100000}};
@@ -206,7 +245,9 @@ async function api(request, env, url, tg) {
       reward+=hours*(rates[m.miner_key]||0);
       await db.prepare("UPDATE miners SET last_claim_at=? WHERE id=?").bind(new Date().toISOString(),m.id).run();
     }
-    if(reward>0) await db.prepare("UPDATE users SET balance=balance+? WHERE id=?").bind(reward,u.id).run();
+    if(reward>0&&!(await issueCoins(db,u.id,reward)))return json({error:"Лимит XI достигнут"},400);
+    for(const m of owned.results||[])await db.prepare("UPDATE miners SET last_claim_at=? WHERE id=?").bind(new Date().toISOString(),m.id).run();
+    if(reward>0)await bumpTask(db,u.id,"miners",1);
     return json({reward,user:await db.prepare("SELECT * FROM users WHERE id=?").bind(u.id).first()});
   }
   if (url.pathname === "/api/faction-create" && method === "POST") {
