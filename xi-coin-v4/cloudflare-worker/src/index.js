@@ -243,7 +243,6 @@ async function api(request, env, url, tg) {
       const last=Date.parse(String(m.last_claim_at).replace(" ","T")+(String(m.last_claim_at).includes("Z")?"":"Z"));
       const hours=Math.min(24,Math.max(0,(Date.now()-(Number.isFinite(last)?last:Date.now()))/3600000));
       reward+=hours*(rates[m.miner_key]||0);
-      await db.prepare("UPDATE miners SET last_claim_at=? WHERE id=?").bind(new Date().toISOString(),m.id).run();
     }
     if(reward>0&&!(await issueCoins(db,u.id,reward)))return json({error:"Лимит XI достигнут"},400);
     for(const m of owned.results||[])await db.prepare("UPDATE miners SET last_claim_at=? WHERE id=?").bind(new Date().toISOString(),m.id).run();
