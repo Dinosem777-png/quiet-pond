@@ -57,8 +57,12 @@ async function getUser(db, tg, ref) {
     const referrer = await db.prepare("SELECT id FROM users WHERE ref_code = ?").bind(ref).first();
     referrerId = referrer?.id ?? null;
   }
-  await db.prepare("INSERT OR IGNORE INTO users (tg_id, username, ref_code, referrer_id) VALUES (?, ?, ?, ?)")
+  const inserted = await db.prepare("INSERT OR IGNORE INTO users (tg_id, username, ref_code, referrer_id) VALUES (?, ?, ?, ?)")
     .bind(String(tg.id), tg.username || "", code, referrerId).run();
+  if (inserted.meta.changes && referrerId) {
+    await db.prepare("UPDATE users SET balance = balance + 1 WHERE id = ?").bind(referrerId).run();
+    await db.prepare("UPDATE users SET referral_paid = 1 WHERE tg_id = ?").bind(String(tg.id)).run();
+  }
   return await db.prepare("SELECT * FROM users WHERE tg_id = ?").bind(String(tg.id)).first();
 }
 async function regenerateEnergy(db, u) {
@@ -102,7 +106,7 @@ async function api(request, env, url, tg) {
   if (url.pathname === "/api/click" && method === "POST") {
     let u = await getUser(db, tg, body.ref);
     u = await regenerateEnergy(db, u);
-    const gain = Number(u.click_power) * Number(u.vip_multiplier || 1);
+    const gain = (Number(u.click_power) / 3) * Number(u.vip_multiplier || 1);
     const changed = await db.prepare("UPDATE users SET balance = balance + ?, energy = energy - 1, energy_updated_at = ? WHERE id = ? AND energy > 0").bind(gain, new Date().toISOString(), u.id).run();
     if (!changed.meta.changes) return json({ error: "Нет энергии" }, 400);
     if (u.referrer_id) await db.prepare("UPDATE users SET balance = balance + ? WHERE id = ?").bind(gain * 0.05, u.referrer_id).run();
@@ -111,11 +115,11 @@ async function api(request, env, url, tg) {
   if (url.pathname === "/api/upgrade" && method === "POST") {
     const u = await getUser(db, tg);
     if (body.type === "click") {
-      const cost = Math.max(0.1, 0.1 * Math.pow(1.7, u.level - 1));
-      const r = await db.prepare("UPDATE users SET balance = balance - ?, click_power = click_power + 0.001, level = level + 1 WHERE id = ? AND balance >= ?").bind(cost, u.id, cost).run();
+      const cost = Math.max(0.033333, (0.1 * Math.pow(1.7, u.level - 1)) / 3);
+      const r = await db.prepare("UPDATE users SET balance = balance - ?, click_power = click_power + 0.000333333, level = level + 1 WHERE id = ? AND balance >= ?").bind(cost, u.id, cost).run();
       if (!r.meta.changes) return json({ error: "Недостаточно XI" }, 400);
     } else {
-      const cost = Math.max(0.15, 0.15 * Math.pow(1.7, u.level - 1));
+      const cost = Math.max(0.05, (0.15 * Math.pow(1.7, u.level - 1)) / 3);
       const r = await db.prepare("UPDATE users SET balance = balance - ?, max_energy = max_energy + 500, energy = energy + 500 WHERE id = ? AND balance >= ?").bind(cost, u.id, cost).run();
       if (!r.meta.changes) return json({ error: "Недостаточно XI" }, 400);
     }
@@ -125,7 +129,7 @@ async function api(request, env, url, tg) {
     const u = await getUser(db, tg);
     const to = String(body.to || "").replace(/^@/, "").trim();
     const amount = Number(body.amount);
-    if (!to || !Number.isFinite(amount) || amount < 0.001 || amount > 1e12) return json({ error: "Проверь получателя и сумму" }, 400);
+    if (!to || !Number.isFinite(amount) || amount < 1000 || amount > 1e12) return json({ error: "Минимальный перевод — 1000 XI. Проверь получателя и сумму" }, 400);
     const receiver = await db.prepare("SELECT * FROM users WHERE lower(username) = lower(?)").bind(to).first();
     if (!receiver || receiver.id === u.id) return json({ error: "Проверь получателя и сумму" }, 400);
     const debit = await db.prepare("UPDATE users SET balance = balance - ? WHERE id = ? AND balance >= ?").bind(amount, u.id, amount).run();
@@ -167,6 +171,65 @@ async function api(request, env, url, tg) {
       });
       return json({ url: invoice });
     } catch (e) { return json({ error: e.message }, 500); }
+  }
+  if (url.pathname === "/api/economy" && method === "GET") {
+    const u = await getUser(db, tg);
+    const miners = await db.prepare("SELECT miner_key, COUNT(*) AS count FROM miners WHERE user_id = ? GROUP BY miner_key").bind(u.id).all();
+    const mineList = await db.prepare("SELECT id, miner_key, last_claim_at FROM miners WHERE user_id = ?").bind(u.id).all();
+    const member = await db.prepare("SELECT f.id, f.name FROM faction_members m JOIN factions f ON f.id=m.faction_id WHERE m.user_id=?").bind(u.id).first();
+    const factions = await db.prepare("SELECT f.id,f.name,COUNT(m.user_id) AS members FROM factions f LEFT JOIN faction_members m ON m.faction_id=f.id GROUP BY f.id ORDER BY members DESC LIMIT 20").all();
+    const chat = await db.prepare("SELECT c.message,c.username,c.created_at FROM chat_messages c ORDER BY c.id DESC LIMIT 30").all();
+    return json({miners:mineList.results||[], faction:member||null, factions:factions.results||[], chat:(chat.results||[]).reverse(), catalog:[
+      {key:"basic",name:"ASIC Mini",price:2500,rate:0.08},
+      {key:"pro",name:"ASIC Pro",price:15000,rate:0.6},
+      {key:"farm",name:"ASIC Farm",price:100000,rate:5}
+    ]});
+  }
+  if (url.pathname === "/api/miner-buy" && method === "POST") {
+    const u=await getUser(db,tg);
+    const catalog={basic:{price:2500},pro:{price:15000},farm:{price:100000}};
+    const item=catalog[String(body.miner||"")];
+    if(!item) return json({error:"Неизвестный ASIC"},400);
+    const debit=await db.prepare("UPDATE users SET balance=balance-? WHERE id=? AND balance>=?").bind(item.price,u.id,item.price).run();
+    if(!debit.meta.changes) return json({error:"Недостаточно XI"},400);
+    await db.prepare("INSERT INTO miners(user_id,miner_key,last_claim_at) VALUES(?,?,?)").bind(u.id,body.miner,new Date().toISOString()).run();
+    return json({ok:true});
+  }
+  if (url.pathname === "/api/miner-claim" && method === "POST") {
+    const u=await getUser(db,tg);
+    const rates={basic:0.08,pro:0.6,farm:5};
+    const owned=await db.prepare("SELECT id,miner_key,last_claim_at FROM miners WHERE user_id=?").bind(u.id).all();
+    let reward=0;
+    for(const m of owned.results||[]){
+      const last=Date.parse(String(m.last_claim_at).replace(" ","T")+(String(m.last_claim_at).includes("Z")?"":"Z"));
+      const hours=Math.min(24,Math.max(0,(Date.now()-(Number.isFinite(last)?last:Date.now()))/3600000));
+      reward+=hours*(rates[m.miner_key]||0);
+      await db.prepare("UPDATE miners SET last_claim_at=? WHERE id=?").bind(new Date().toISOString(),m.id).run();
+    }
+    if(reward>0) await db.prepare("UPDATE users SET balance=balance+? WHERE id=?").bind(reward,u.id).run();
+    return json({reward,user:await db.prepare("SELECT * FROM users WHERE id=?").bind(u.id).first()});
+  }
+  if (url.pathname === "/api/faction-create" && method === "POST") {
+    const u=await getUser(db,tg); const name=String(body.name||"").trim();
+    if(name.length<3||name.length>20) return json({error:"Название: от 3 до 20 символов"},400);
+    const has=await db.prepare("SELECT faction_id FROM faction_members WHERE user_id=?").bind(u.id).first();
+    if(has) return json({error:"Ты уже состоишь во фракции"},400);
+    try { const r=await db.prepare("INSERT INTO factions(name,owner_id) VALUES(?,?)").bind(name,u.id).run(); await db.prepare("INSERT INTO faction_members(faction_id,user_id) VALUES(?,?)").bind(r.meta.last_row_id,u.id).run(); }
+    catch(e){return json({error:"Такое название уже занято"},400)}
+    return json({ok:true});
+  }
+  if (url.pathname === "/api/faction-join" && method === "POST") {
+    const u=await getUser(db,tg); const has=await db.prepare("SELECT faction_id FROM faction_members WHERE user_id=?").bind(u.id).first();
+    if(has) return json({error:"Ты уже состоишь во фракции"},400);
+    const f=await db.prepare("SELECT id FROM factions WHERE id=?").bind(Number(body.id)).first();
+    if(!f) return json({error:"Фракция не найдена"},404);
+    await db.prepare("INSERT INTO faction_members(faction_id,user_id) VALUES(?,?)").bind(f.id,u.id).run(); return json({ok:true});
+  }
+  if (url.pathname === "/api/chat-send" && method === "POST") {
+    const u=await getUser(db,tg); const message=String(body.message||"").trim();
+    if(!message||message.length>300) return json({error:"Сообщение: до 300 символов"},400);
+    await db.prepare("INSERT INTO chat_messages(user_id,username,message) VALUES(?,?,?)").bind(u.id,u.username||"Игрок",message).run();
+    return json({ok:true});
   }
   return json({ error: "Not found" }, 404);
 }
