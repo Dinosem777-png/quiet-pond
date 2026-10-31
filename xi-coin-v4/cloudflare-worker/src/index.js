@@ -255,11 +255,11 @@ async function api(request, env, url, tg) {
     if(!row||Math.floor(Number(row.xp||0)/100)+1<level)return json({error:"Уровень пропуска ещё не достигнут"},400);
     if(Number(row.claimed_level||0)!==level-1)return json({error:"Сначала забери предыдущую награду"},400);
     const rare=level===10?"rare":level===20?"epic":level===30?"legendary":null;
-    const reward=Number((level*0.1).toFixed(2));
-    if(!(await issueCoins(db,u.id,reward)))return json({error:"Лимит XI достигнут"},400);
+    const freeReward=Number((level*0.1).toFixed(2)),premiumReward=Number(row.premium)?Number((level*0.25).toFixed(2)):0;
+    if(!(await issueCoins(db,u.id,freeReward+premiumReward)))return json({error:"Лимит XI достигнут"},400);
     if(Number(row.premium)&&rare)await db.prepare("INSERT INTO miners(user_id,miner_key,last_claim_at) VALUES(?,?,?)").bind(u.id,rare,new Date().toISOString()).run();
     await db.prepare("UPDATE pass_progress SET claimed_level=? WHERE user_id=? AND season=? AND claimed_level<?").bind(level,u.id,season,level).run();
-    return json({ok:true,reward,rareMiner:Number(row.premium)?rare:null});
+    return json({ok:true,reward:freeReward+premiumReward,freeReward,premiumReward,rareMiner:Number(row.premium)?rare:null});
   }
   if (url.pathname === "/api/miner-upgrade" && method === "POST") {
     const u=await getUser(db,tg),id=Number(body.id);
