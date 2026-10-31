@@ -1,0 +1,34 @@
+name: Fix progression SQL
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.event.head_commit.message != 'Fix progression SQL query'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fix SQL and commit
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('xi-coin-v4/cloudflare-worker/src/index.js')
+          s = p.read_text()
+          old = "END*(1+0.1*(COALESCE(l.level,1)-1)),0) AS power"
+          new = "END*(1+0.1*(COALESCE(l.level,1)-1))),0) AS power"
+          if old not in s:
+              raise SystemExit('Target SQL fragment not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add xi-coin-v4/cloudflare-worker/src/index.js
+          git commit -m 'Fix progression SQL query'
+          git push
