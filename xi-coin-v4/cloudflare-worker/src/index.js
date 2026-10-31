@@ -59,6 +59,20 @@ async function issueCoins(db, userId, amount) {
 async function bumpTask(db,userId,key,amount=1) {
   await db.prepare("INSERT INTO daily_task_progress(user_id,day,task_key,progress) VALUES(?,?,?,?) ON CONFLICT(user_id,day,task_key) DO UPDATE SET progress=progress+excluded.progress").bind(userId,utcDay(),key,amount).run();
 }
+async function recordAd(db,u,tgId,day) {
+  const daily=await db.prepare("SELECT COUNT(*) AS n FROM ads WHERE tg_id=? AND day=?").bind(String(tgId),day).first();
+  if(Number(daily.n)>=20)throw new Error("Лимит рекламы на сегодня: 20");
+  await db.prepare("INSERT INTO ads(tg_id,day) VALUES(?,?)").bind(String(tgId),day).run();
+  await db.prepare("INSERT INTO ad_progress(user_id,energy_progress) VALUES(?,1) ON CONFLICT(user_id) DO UPDATE SET energy_progress=energy_progress+1").bind(u.id).run();
+  const total=await db.prepare("SELECT COUNT(*) AS n FROM ads WHERE tg_id=?").bind(String(tgId)).first();
+  const n=Number(total.n)||0;
+  for(const [key,threshold,rate] of [["ad50",50,0.05],["ad100",100,0.1]]) {
+    const target=Math.floor(n/threshold);
+    const owned=await db.prepare("SELECT COUNT(*) AS n FROM miners WHERE user_id=? AND miner_key=?").bind(u.id,key).first();
+    for(let i=Number(owned.n)||0;i<target;i++)await db.prepare("INSERT INTO miners(user_id,miner_key,last_claim_at) VALUES(?,?,?)").bind(u.id,key,new Date().toISOString()).run();
+  }
+  return {totalAds:n,energyProgress:Math.min(5,(await db.prepare("SELECT energy_progress FROM ad_progress WHERE user_id=?").bind(u.id).first()).energy_progress)};
+}
 async function getUser(db, tg, ref) {
   let u = await db.prepare("SELECT * FROM users WHERE tg_id = ?").bind(String(tg.id)).first();
   if (u) return u;
@@ -169,12 +183,28 @@ async function api(request, env, url, tg) {
   if (url.pathname === "/api/ad-reward" && method === "POST") {
     const u = await getUser(db, tg);
     const day = new Date().toISOString().slice(0, 10);
-    const count = await db.prepare("SELECT COUNT(*) AS n FROM ads WHERE tg_id = ? AND day = ?").bind(String(tg.id), day).first();
-    if (count.n >= 20) return json({ error: "Лимит рекламы на сегодня: 20" }, 429);
+    let adInfo;try{adInfo=await recordAd(db,u,tg.id,day)}catch(e){return json({error:e.message},429)}
     if(!(await issueCoins(db,u.id,1)))return json({error:"Лимит 10 000 000 XI достигнут"},400);
-    await db.prepare("INSERT INTO ads (tg_id, day) VALUES (?, ?)").bind(String(tg.id), day).run();
     await bumpTask(db,u.id,"ads",1);
-    return json({user:await db.prepare("SELECT * FROM users WHERE id=?").bind(u.id).first(),reward:1});
+    return json({user:await db.prepare("SELECT * FROM users WHERE id=?").bind(u.id).first(),reward:1,...adInfo});
+  }
+  if(url.pathname==="/api/energy-ad-refill"&&method==="POST"){
+    const u=await getUser(db,tg);
+    const p=await db.prepare("SELECT energy_progress FROM ad_progress WHERE user_id=?").bind(u.id).first();
+    if(!p||Number(p.energy_progress)<5)return json({error:"Нужно посмотреть ещё рекламу: "+Math.max(0,5-Number(p?.energy_progress||0))},400);
+    const used=await db.prepare("UPDATE ad_progress SET energy_progress=energy_progress-5 WHERE user_id=? AND energy_progress>=5").bind(u.id).run();
+    if(!used.meta.changes)return json({error:"Недостаточно просмотров"},400);
+    await db.prepare("UPDATE users SET energy=max_energy,energy_updated_at=? WHERE id=?").bind(new Date().toISOString(),u.id).run();
+    return json({ok:true,user:await db.prepare("SELECT * FROM users WHERE id=?").bind(u.id).first()});
+  }
+  if(url.pathname==="/api/roulette-spin"&&method==="POST"){
+    const u=await getUser(db,tg),day=utcDay();
+    let adInfo;try{adInfo=await recordAd(db,u,tg.id,day)}catch(e){return json({error:e.message},429)}
+    const roll=Math.random()*100;let reward=1;
+    if(roll<70)reward=1;else if(roll<90)reward=2;else if(roll<95)reward=5;else if(roll<97)reward=10;else if(roll<99)reward=50;else reward=100;
+    if(!(await issueCoins(db,u.id,reward)))return json({error:"Лимит 10 000 000 XI достигнут"},400);
+    await db.prepare("INSERT INTO roulette_spins(user_id,reward) VALUES(?,?)").bind(u.id,reward).run();
+    return json({ok:true,reward,...adInfo,user:await db.prepare("SELECT * FROM users WHERE id=?").bind(u.id).first()});
   }
   if (url.pathname === "/api/buy" && method === "POST") {
     const item = ITEMS[String(body.item || "")];
@@ -198,7 +228,7 @@ async function api(request, env, url, tg) {
     return json({miners:mineList.results||[], faction:member||null, factions:factions.results||[], chat:(chat.results||[]).reverse(), catalog:[
       {key:"basic",name:"ASIC Mini",price:2500,rate:0.08},
       {key:"pro",name:"ASIC Pro",price:15000,rate:0.6},
-      {key:"farm",name:"ASIC Farm",price:100000,rate:5}
+      {key:"farm",name:"ASIC Farm",price:100000,rate:5},{key:"ad50",name:"Рекламный ASIC 50",price:0,rate:0.05},{key:"ad100",name:"Рекламный ASIC 100",price:0,rate:0.1}
     ]});
   }
   if(url.pathname==="/api/progression"&&method==="GET"){
@@ -236,7 +266,7 @@ async function api(request, env, url, tg) {
   }
   if (url.pathname === "/api/miner-claim" && method === "POST") {
     const u=await getUser(db,tg);
-    const rates={basic:0.08,pro:0.6,farm:5};
+    const rates={basic:0.08,pro:0.6,farm:5,ad50:0.05,ad100:0.1};
     const owned=await db.prepare("SELECT id,miner_key,last_claim_at FROM miners WHERE user_id=?").bind(u.id).all();
     let reward=0;
     for(const m of owned.results||[]){
