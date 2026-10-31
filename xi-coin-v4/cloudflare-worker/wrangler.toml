@@ -1,8 +1,8 @@
-name = "xi-coin-v4"
+name = "quiet-pond"
 main = "src/index.js"
 compatibility_date = "2026-10-31"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "xi-coin-db"
-database_id = "00000001-00000000-00005115-f74e96c0c1c73eb893547c435d723262"
+database_id = "1a596764-a145-4656-9bb8-17ebe2d5579c"
