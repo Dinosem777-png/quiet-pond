@@ -60,8 +60,6 @@ async function bumpTask(db,userId,key,amount=1) {
   await db.prepare("INSERT INTO daily_task_progress(user_id,day,task_key,progress) VALUES(?,?,?,?) ON CONFLICT(user_id,day,task_key) DO UPDATE SET progress=progress+excluded.progress").bind(userId,utcDay(),key,amount).run();
 }
 async function recordAd(db,u,tgId,day) {
-  const daily=await db.prepare("SELECT COUNT(*) AS n FROM ads WHERE tg_id=? AND day=?").bind(String(tgId),day).first();
-  if(Number(daily.n)>=20)throw new Error("Лимит рекламы на сегодня: 20");
   await db.prepare("INSERT INTO ads(tg_id,day) VALUES(?,?)").bind(String(tgId),day).run();
   await db.prepare("INSERT INTO ad_progress(user_id,energy_progress) VALUES(?,1) ON CONFLICT(user_id) DO UPDATE SET energy_progress=energy_progress+1").bind(u.id).run();
   const total=await db.prepare("SELECT COUNT(*) AS n FROM ads WHERE tg_id=?").bind(String(tgId)).first();
