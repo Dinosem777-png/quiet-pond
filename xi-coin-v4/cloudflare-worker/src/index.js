@@ -183,6 +183,25 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+    if (url.pathname === "/telegram/diagnostics" && request.method === "GET") {
+      if (!env.BOT_TOKEN) return json({ botTokenConfigured: false });
+      const [meRes, hookRes] = await Promise.all([
+        fetch("https://api.telegram.org/bot" + env.BOT_TOKEN + "/getMe"),
+        fetch("https://api.telegram.org/bot" + env.BOT_TOKEN + "/getWebhookInfo")
+      ]);
+      const [me, hook] = await Promise.all([meRes.json(), hookRes.json()]);
+      return json({
+        botTokenConfigured: true,
+        botApiOk: !!me.ok,
+        botUsername: me.ok ? me.result.username : null,
+        webhookApiOk: !!hook.ok,
+        webhookUrlSet: !!(hook.ok && hook.result.url),
+        webhookUrlMatches: !!(hook.ok && hook.result.url === new URL(request.url).origin + "/telegram/webhook"),
+        pendingUpdates: hook.ok ? hook.result.pending_update_count : null,
+        lastWebhookError: hook.ok ? (hook.result.last_error_message || null) : (hook.description || "getWebhookInfo failed"),
+        lastWebhookErrorDate: hook.ok ? (hook.result.last_error_date || null) : null
+      });
+    }
     if (url.pathname === "/telegram/webhook" && request.method === "POST") return webhook(request, env);
     if (url.pathname.startsWith("/api/")) {
       const tg = await requireUser(request, env);
