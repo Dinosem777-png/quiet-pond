@@ -225,7 +225,7 @@ async function api(request, env, url, tg) {
     const member = await db.prepare("SELECT f.id, f.name FROM faction_members m JOIN factions f ON f.id=m.faction_id WHERE m.user_id=?").bind(u.id).first();
     const factions = await db.prepare("SELECT f.id,f.name,COUNT(m.user_id) AS members FROM factions f LEFT JOIN faction_members m ON m.faction_id=f.id GROUP BY f.id ORDER BY members DESC LIMIT 20").all();
     const chat = await db.prepare("SELECT c.message,c.username,c.created_at FROM chat_messages c ORDER BY c.id DESC LIMIT 30").all();
-    return json({miners:mineList.results||[], faction:member||null, factions:factions.results||[], chat:(chat.results||[]).reverse(), catalog:[
+    const adsTotal=await db.prepare("SELECT COUNT(*) AS n FROM ads WHERE tg_id=?").bind(String(tg.id)).first(); const adProg=await db.prepare("SELECT energy_progress FROM ad_progress WHERE user_id=?").bind(u.id).first(); const ad50=await db.prepare("SELECT COUNT(*) AS n FROM miners WHERE user_id=? AND miner_key='ad50'").bind(u.id).first(); const ad100=await db.prepare("SELECT COUNT(*) AS n FROM miners WHERE user_id=? AND miner_key='ad100'").bind(u.id).first(); return json({totalAds:adsTotal.n,energyProgress:adProg?.energy_progress||0,ad50:ad50.n,ad100:ad100.n,miners:mineList.results||[], faction:member||null, factions:factions.results||[], chat:(chat.results||[]).reverse(), catalog:[
       {key:"basic",name:"ASIC Mini",price:2500,rate:0.08},
       {key:"pro",name:"ASIC Pro",price:15000,rate:0.6},
       {key:"farm",name:"ASIC Farm",price:100000,rate:5},{key:"ad50",name:"Рекламный ASIC 50",price:0,rate:0.05},{key:"ad100",name:"Рекламный ASIC 100",price:0,rate:0.1}
