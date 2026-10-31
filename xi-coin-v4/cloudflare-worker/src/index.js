@@ -148,7 +148,7 @@ async function api(request, env, url, tg) {
     const changed = await db.prepare("UPDATE users SET energy=energy-1,energy_updated_at=? WHERE id=? AND energy>0").bind(new Date().toISOString(),u.id).run();
     if(!changed.meta.changes)return json({error:"Нет энергии"},400);
     if(!(await issueCoins(db,u.id,gain))){await db.prepare("UPDATE users SET energy=energy+1 WHERE id=?").bind(u.id).run();return json({error:"Все 10 000 000 XI уже добыты. Произойдёт чудо! ✨"},400);}
-    const xpPerClick = Math.max(1, Number(u.level || 1));
+    const xpPerClick = Math.max(1, Number(u.level || 1)) * 10;
     const xpCap = 20 * 999 + 999 * 998;
     const nextXp = Math.min(xpCap, Number(u.xp || 0) + xpPerClick);
     const nextProgress = progressionStats(nextXp);
@@ -159,7 +159,7 @@ async function api(request, env, url, tg) {
       .bind(nextXp,nextLevel,energyScale,u.id).run();
     await bumpTask(db,u.id,"clicks",1);
     if(u.referrer_id)await issueCoins(db,u.referrer_id,gain*0.05);
-    return json({user:await db.prepare("SELECT * FROM users WHERE id=?").bind(u.id).first(),gain});
+    return json({user:await db.prepare("SELECT * FROM users WHERE id=?").bind(u.id).first(),gain,earnedCoins:gain});
   }
   if (url.pathname === "/api/upgrade" && method === "POST") {
     const u = await getUser(db, tg);
