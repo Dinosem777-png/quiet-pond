@@ -244,8 +244,30 @@ async function api(request, env, url, tg) {
   // Backward-compatible D1 migration: older databases may not have faction levels yet.
   try { await db.prepare("ALTER TABLE factions ADD COLUMN level INTEGER NOT NULL DEFAULT 1").run(); }
   catch (e) { if (!String(e?.message || e).toLowerCase().includes("duplicate column")) throw e; }
+
   const method = request.method;
   const body = method === "POST" ? await request.json().catch(() => ({})) : {};
+  // New standalone Telegram RPG. Legacy Xi Coin endpoints are intentionally disabled.
+  if (url.pathname.startsWith("/api/")) {
+    await db.prepare("CREATE TABLE IF NOT EXISTS rpg_accounts (tg_id TEXT PRIMARY KEY, username TEXT NOT NULL DEFAULT '', first_name TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+    await db.prepare("CREATE TABLE IF NOT EXISTS rpg_profiles (tg_id TEXT PRIMARY KEY, state_json TEXT NOT NULL DEFAULT '{}', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(tg_id) REFERENCES rpg_accounts(tg_id))").run();
+    await db.prepare("INSERT OR IGNORE INTO rpg_accounts(tg_id,username,first_name) VALUES(?,?,?)").bind(String(tg.id),String(tg.username||""),String(tg.first_name||"")).run();
+    await db.prepare("UPDATE rpg_accounts SET username=?,first_name=? WHERE tg_id=?").bind(String(tg.username||""),String(tg.first_name||""),String(tg.id)).run();
+    const initial = {characterName:String(tg.first_name||"Путник").slice(0,24),level:1,xp:0,gold:0,hp:100,maxHp:100,energy:50,maxEnergy:50,zone:"green_fields",x:120,kills:0,potions:3,createdAt:new Date().toISOString()};
+    if(url.pathname==="/api/rpg" && method==="GET"){
+      const row=await db.prepare("SELECT state_json FROM rpg_profiles WHERE tg_id=?").bind(String(tg.id)).first();
+      let state=initial;try{if(row?.state_json)state={...initial,...JSON.parse(row.state_json)}}catch(e){}
+      return json({ok:true,player:{id:String(tg.id),username:tg.username||"",firstName:tg.first_name||""},state});
+    }
+    if(url.pathname==="/api/rpg" && method==="POST"){
+      const n=(v,d,min,max)=>Math.max(min,Math.min(max,Number.isFinite(Number(v))?Number(v):d));
+      const state={characterName:String(body.characterName||initial.characterName).slice(0,24),level:Math.floor(n(body.level,1,1,100)),xp:Math.floor(n(body.xp,0,0,1e9)),gold:Math.floor(n(body.gold,0,0,1e9)),hp:n(body.hp,100,0,10000),maxHp:n(body.maxHp,100,1,10000),energy:n(body.energy,50,0,10000),maxEnergy:n(body.maxEnergy,50,1,10000),zone:["green_fields","starter_town","dark_forest"].includes(body.zone)?body.zone:"green_fields",x:n(body.x,120,0,10000),kills:Math.floor(n(body.kills,0,0,1e9)),potions:Math.floor(n(body.potions,3,0,999))};
+      await db.prepare("INSERT INTO rpg_profiles(tg_id,state_json,updated_at) VALUES(?,?,?) ON CONFLICT(tg_id) DO UPDATE SET state_json=excluded.state_json,updated_at=excluded.updated_at").bind(String(tg.id),JSON.stringify(state),new Date().toISOString()).run();
+      return json({ok:true,state});
+    }
+    return json({error:"Этот раздел удалён. Доступна только новая RPG."},410);
+  }
+
   if (url.pathname === "/api/rpg" && method === "GET") {
     const u=await getUser(db,tg);
     const row=await db.prepare("SELECT state_json FROM rpg_profiles WHERE user_id=?").bind(u.id).first();
