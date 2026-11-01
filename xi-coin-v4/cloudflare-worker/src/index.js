@@ -453,6 +453,38 @@ async function api(request, env, url, tg) {
     await db.prepare("INSERT INTO chat_messages(user_id,username,message) VALUES(?,?,?)").bind(u.id,u.username||"Игрок",message).run();
     return json({ok:true});
   }
+
+  // Admin access is restricted to the owner's immutable Telegram numeric ID.
+  if (url.pathname === "/api/admin" && method === "GET") {
+    if (String(tg.id) !== "5599495541") return json({error:"Нет доступа"},403);
+    const users = await db.prepare("SELECT id,tg_id,username,balance,player_level,created_at FROM users ORDER BY id DESC LIMIT 100").all();
+    return json({ok:true,users:users.results||[]});
+  }
+  if (url.pathname === "/api/admin/action" && method === "POST") {
+    if (String(tg.id) !== "5599495541") return json({error:"Нет доступа"},403);
+    const target = String(body.target||"").replace(/^@/,"").trim();
+    const targetUser = await db.prepare("SELECT id,tg_id,username,balance FROM users WHERE tg_id=? OR lower(username)=lower(?)").bind(target,target).first();
+    if (!targetUser) return json({error:"Игрок не найден. Он должен хотя бы один раз открыть игру."},404);
+    const amount = Number(body.amount);
+    if (body.action === "add_xi") {
+      if (!Number.isFinite(amount)||amount<=0||amount>1000000) return json({error:"Сумма должна быть от 0 до 1 000 000 XI"},400);
+      if (!(await issueCoins(db,targetUser.id,amount))) return json({error:"Недостаточно свободного запаса XI"},400);
+    } else if (body.action === "remove_xi") {
+      if (!Number.isFinite(amount)||amount<=0||amount>1000000) return json({error:"Сумма должна быть от 0 до 1 000 000 XI"},400);
+      const debit=await db.prepare("UPDATE users SET balance=balance-? WHERE id=? AND balance>=?").bind(amount,targetUser.id,amount).run();
+      if (!debit.meta.changes) return json({error:"У игрока недостаточно XI"},400);
+      await db.prepare("UPDATE economy_state SET minted=MAX(0,minted-?) WHERE id=1").bind(amount).run();
+    } else if (body.action === "grant_miner") {
+      const allowed=["nano","pocket","starter","basic","pro","farm","rare","epic","legendary","ad50","ad100"];
+      const key=String(body.miner||"");
+      if (!allowed.includes(key)) return json({error:"Неизвестный ASIC"},400);
+      await db.prepare("INSERT INTO miners(user_id,miner_key,last_claim_at) VALUES(?,?,?)").bind(targetUser.id,key,new Date().toISOString()).run();
+    } else {
+      return json({error:"Неизвестное действие"},400);
+    }
+    const updated=await db.prepare("SELECT id,tg_id,username,balance,player_level FROM users WHERE id=?").bind(targetUser.id).first();
+    return json({ok:true,user:updated});
+  }
   return json({ error: "Not found" }, 404);
 }
 async function webhook(request, env) {
