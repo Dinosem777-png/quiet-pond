@@ -411,7 +411,7 @@ async function api(request, env, url, tg) {
     const levelBonus=Math.max(0,Math.min(1,(Number(u.player_level||1)-1)/999));
     const titleRow=await db.prepare("SELECT item_key FROM user_cosmetics WHERE user_id=? AND item_type='title' AND equipped=1").bind(u.id).first();const titleBonus=Number(ITEMS[titleRow?.item_key]?.bonus||0)/100;
     const faction=await db.prepare("SELECT f.level FROM faction_members m JOIN factions f ON f.id=m.faction_id WHERE m.user_id=?").bind(u.id).first();
-    const factionBonus=faction?Math.max(0,Math.min(10,Number(faction.level||1)))/100;
+    const factionBonus=faction?Math.max(0,Math.min(10,Number(faction.level||1)))/100:0;
     reward*=Number(u.vip_multiplier||1)*(1+levelBonus)*(1+factionBonus)*(1+titleBonus);
     if(reward>0&&!(await issueCoins(db,u.id,reward)))return json({error:"Лимит XI достигнут"},400);
     for(const m of owned.results||[])await db.prepare("UPDATE miners SET last_claim_at=? WHERE id=?").bind(new Date().toISOString(),m.id).run();
