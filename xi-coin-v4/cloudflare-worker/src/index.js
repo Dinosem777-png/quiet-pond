@@ -166,9 +166,37 @@ async function requireUser(request, env) {
   const initData = auth.replace(/^tma\s+/i, "");
   return await verifyTelegram(initData, env.BOT_TOKEN);
 }
+async function ensureNpcData(db) {
+  await db.prepare("CREATE TABLE IF NOT EXISTS npc_profiles (id INTEGER PRIMARY KEY, username TEXT NOT NULL, avatar TEXT NOT NULL, balance REAL NOT NULL, player_level INTEGER NOT NULL, power REAL NOT NULL, active_hour INTEGER NOT NULL)").run();
+  await db.prepare("CREATE TABLE IF NOT EXISTS npc_chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, npc_id INTEGER NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+  const count=await db.prepare("SELECT COUNT(*) AS n FROM npc_profiles").first();
+  if(Number(count?.n||0)<1000){
+    const names=["Alex","Max","Daniel","Mia","Luna","Oliver","Sofia","Leo","Eva","Noah","Nikita","Artem","Dima","Vlad","Mila","Anna","Mark","Liza","Tim","Roman","Ilya","Kate","David","Emma","Kai","Nina","Ivan","Alina","Erik","Zoe"];
+    const avatars=["🎮","🚀","🐺","🦊","🐼","🦁","🐸","🐯","🐻","🤖","👾","🐲"];
+    for(let i=Number(count?.n||0);i<1000;i++){
+      const name=names[i%names.length]+(i>=names.length?"_"+(Math.floor(i/names.length)+1):"");
+      const balance=Number((10+((i*7919)%250000)/100).toFixed(3));
+      const level=1+((i*17)%85), power=Number((0.01+((i*37)%1200)/100).toFixed(3));
+      await db.prepare("INSERT OR IGNORE INTO npc_profiles(id,username,avatar,balance,player_level,power,active_hour) VALUES(?,?,?,?,?,?,?)").bind(i+1,name,avatars[i%avatars.length],balance,level,power,(i*7)%24).run();
+    }
+  }
+  const chatCount=await db.prepare("SELECT COUNT(*) AS n FROM npc_chat_messages").first();
+  if(!Number(chatCount?.n||0)){
+    const lines=["Кто сегодня уже собрал майнинг?","Всем привет! Как успехи?","Наконец-то улучшил свою ферму 🚀","Коплю на новый ASIC.","Какой у вас сейчас уровень?","Удачи всем в игре!","Сегодня хороший день для Xi Coin 🙂","Зашёл проверить ежедневный бонус.","Кто-нибудь состоит в общине?","Постепенно развиваю аккаунт."];
+    for(let i=0;i<30;i++) await db.prepare("INSERT INTO npc_chat_messages(npc_id,message,created_at) VALUES(?,?,datetime('now',?))").bind((i*31)%1000+1,lines[i%lines.length],"-"+(30-i)*7+" minutes").run();
+  }
+  const latest=await db.prepare("SELECT created_at FROM npc_chat_messages ORDER BY id DESC LIMIT 1").first();
+  if(latest && Date.now()-Date.parse(String(latest.created_at).replace(" ","T")+"Z")>8*60*1000){
+    const n=await db.prepare("SELECT COUNT(*) AS n FROM npc_chat_messages").first();
+    const npc=1+((Number(n?.n||0)*73)%1000);
+    const lines=["Как вам обновление?","Пора прокачать ферму ⛏️","Всем хорошего вечера!","Проверяю рейтинг игроков.","Потихоньку растём 💪","У кого какие планы на сегодня?","Забрал награду и продолжаю играть."];
+    await db.prepare("INSERT INTO npc_chat_messages(npc_id,message) VALUES(?,?)").bind(npc,lines[Number(n?.n||0)%lines.length]).run();
+  }
+}
 async function api(request, env, url, tg) {
   const db = env.DB;
   if (!db) return json({ error: "D1 не подключена. Настрой binding DB." }, 500);
+  await ensureNpcData(db);
   // Backward-compatible D1 migration: older databases may not have faction levels yet.
   try { await db.prepare("ALTER TABLE factions ADD COLUMN level INTEGER NOT NULL DEFAULT 1").run(); }
   catch (e) { if (!String(e?.message || e).toLowerCase().includes("duplicate column")) throw e; }
@@ -370,7 +398,7 @@ async function api(request, env, url, tg) {
     const mineList = await db.prepare("SELECT m.id,m.miner_key,m.last_claim_at,COALESCE(l.level,1) AS level FROM miners m LEFT JOIN miner_levels l ON l.miner_id=m.id WHERE m.user_id = ?").bind(u.id).all();
     const member = await db.prepare("SELECT f.id, f.name, f.owner_id, f.level FROM faction_members m JOIN factions f ON f.id=m.faction_id WHERE m.user_id=?").bind(u.id).first();
     const factions = await db.prepare("SELECT f.id,f.name,f.owner_id,f.level,COUNT(m.user_id) AS members FROM factions f LEFT JOIN faction_members m ON m.faction_id=f.id GROUP BY f.id ORDER BY members DESC LIMIT 20").all();
-    const chat = await db.prepare("SELECT c.message,c.username,c.created_at,uc.item_key AS title_key,cc.item_key AS color_key FROM chat_messages c LEFT JOIN user_cosmetics uc ON uc.user_id=c.user_id AND uc.item_type='title' AND uc.equipped=1 LEFT JOIN user_cosmetics cc ON cc.user_id=c.user_id AND cc.item_type='color' AND cc.equipped=1 ORDER BY c.id DESC LIMIT 30").all();
+    const chat = await db.prepare("SELECT * FROM (SELECT c.message,c.username,c.created_at,uc.item_key AS title_key,cc.item_key AS color_key,0 AS is_npc,NULL AS avatar FROM chat_messages c LEFT JOIN user_cosmetics uc ON uc.user_id=c.user_id AND uc.item_type='title' AND uc.equipped=1 LEFT JOIN user_cosmetics cc ON cc.user_id=c.user_id AND cc.item_type='color' AND cc.equipped=1 UNION ALL SELECT n.message,p.username,n.created_at,NULL,NULL,1,p.avatar FROM npc_chat_messages n JOIN npc_profiles p ON p.id=n.npc_id) ORDER BY created_at DESC LIMIT 30").all();
     const adsTotal=await db.prepare("SELECT COUNT(*) AS n FROM ads WHERE tg_id=?").bind(String(tg.id)).first(); const adProg=await db.prepare("SELECT energy_progress FROM ad_progress WHERE user_id=?").bind(u.id).first(); const ad50=await db.prepare("SELECT COUNT(*) AS n FROM miners WHERE user_id=? AND miner_key='ad50'").bind(u.id).first(); const ad100=await db.prepare("SELECT COUNT(*) AS n FROM miners WHERE user_id=? AND miner_key='ad100'").bind(u.id).first(); const rates={nano:0.005,pocket:0.02,starter:0.06,basic:0.08,pro:0.6,farm:5,ad50:0.05,ad100:0.1,rare:0.25,epic:1,legendary:4}; const baseHourly=(mineList.results||[]).reduce((s,m)=>s+(rates[m.miner_key]||0)*(1+0.1*(Number(m.level||1)-1)),0); const factionBonus=member?Math.max(0,Math.min(10,Number(member.level||1)))/100:0; const levelBonus=Math.max(0,Math.min(1,(Number(u.player_level||1)-1)/999)); const titleRow=await db.prepare("SELECT item_key FROM user_cosmetics WHERE user_id=? AND item_type='title' AND equipped=1").bind(u.id).first();const titleBonus=Number(ITEMS[titleRow?.item_key]?.bonus||0)/100; const hourlyIncome=baseHourly*Number(u.vip_multiplier||1)*(1+levelBonus)*(1+factionBonus)*(1+titleBonus);
     return json({baseHourly,hourlyIncome,vip: Number(u.vip_multiplier||1)>=2,level:Number(u.player_level||1),levelBonus:levelBonus*100,totalAds:adsTotal.n,energyProgress:adProg?.energy_progress||0,ad50:ad50.n,ad100:ad100.n,miners:mineList.results||[], faction:member?{...member,bonusPercent:Number(member.level||1),upgradeCost:Number(member.level||1)<10?1000*Math.pow(2,Number(member.level||1)-1):null}:null, factionBonusPercent:factionBonus*100, factions:factions.results||[], chat:(chat.results||[]).reverse(), catalog:[
       {key:"nano",name:"ASIC Nano",price:100,rate:0.005},
@@ -385,10 +413,10 @@ async function api(request, env, url, tg) {
     const u=await getUser(db,tg);
     const supply=await db.prepare("SELECT minted,max_supply FROM economy_state WHERE id=1").first();
     const cosmeticCols=",(SELECT item_key FROM user_cosmetics c WHERE c.user_id=u.id AND c.item_type='title' AND c.equipped=1 LIMIT 1) AS title_key,(SELECT item_key FROM user_cosmetics c WHERE c.user_id=u.id AND c.item_type='color' AND c.equipped=1 LIMIT 1) AS color_key";
-    const players=await db.prepare("SELECT u.username,u.balance"+cosmeticCols+" FROM users u ORDER BY u.balance DESC LIMIT 20").all();
-    const levelPlayers=await db.prepare("SELECT u.username,u.player_level"+cosmeticCols+" FROM users u ORDER BY u.player_level DESC,u.id ASC LIMIT 20").all();
+    const players=await db.prepare("SELECT * FROM (SELECT u.username,u.balance"+cosmeticCols+",0 AS is_npc,NULL AS avatar FROM users u UNION ALL SELECT username,balance,NULL,NULL,1,avatar FROM npc_profiles) ORDER BY balance DESC LIMIT 20").all();
+    const levelPlayers=await db.prepare("SELECT * FROM (SELECT u.username,u.player_level"+cosmeticCols+",0 AS is_npc,NULL AS avatar FROM users u UNION ALL SELECT username,player_level,NULL,NULL,1,avatar FROM npc_profiles) ORDER BY player_level DESC LIMIT 20").all();
     const seasonPlayers=await db.prepare("SELECT u.username,p.xp"+cosmeticCols+" FROM pass_progress p JOIN users u ON u.id=p.user_id WHERE p.season='2026-11' ORDER BY p.xp DESC LIMIT 20").all();
-    const farmPlayers=await db.prepare("SELECT u.username,COALESCE(SUM(CASE m.miner_key WHEN 'nano' THEN 0.005 WHEN 'pocket' THEN 0.02 WHEN 'starter' THEN 0.06 WHEN 'basic' THEN 0.08 WHEN 'pro' THEN 0.6 WHEN 'farm' THEN 5 WHEN 'ad50' THEN 0.05 WHEN 'ad100' THEN 0.1 WHEN 'rare' THEN 0.25 WHEN 'epic' THEN 1 WHEN 'legendary' THEN 4 ELSE 0 END*(1+0.1*(COALESCE(l.level,1)-1))),0) AS power FROM users u LEFT JOIN miners m ON m.user_id=u.id LEFT JOIN miner_levels l ON l.miner_id=m.id GROUP BY u.id ORDER BY power DESC LIMIT 20").all();
+    const farmPlayers=await db.prepare("SELECT * FROM (SELECT u.username,COALESCE(SUM(CASE m.miner_key WHEN 'nano' THEN 0.005 WHEN 'pocket' THEN 0.02 WHEN 'starter' THEN 0.06 WHEN 'basic' THEN 0.08 WHEN 'pro' THEN 0.6 WHEN 'farm' THEN 5 WHEN 'ad50' THEN 0.05 WHEN 'ad100' THEN 0.1 WHEN 'rare' THEN 0.25 WHEN 'epic' THEN 1 WHEN 'legendary' THEN 4 ELSE 0 END*(1+0.1*(COALESCE(l.level,1)-1))),0) AS power,0 AS is_npc,NULL AS avatar FROM users u LEFT JOIN miners m ON m.user_id=u.id LEFT JOIN miner_levels l ON l.miner_id=m.id GROUP BY u.id UNION ALL SELECT username,power,1,avatar FROM npc_profiles) ORDER BY power DESC LIMIT 20").all();
     const factions=await db.prepare("SELECT f.name,COUNT(m.user_id) AS members,COALESCE(SUM(u.balance),0) AS score FROM factions f LEFT JOIN faction_members m ON m.faction_id=f.id LEFT JOIN users u ON u.id=m.user_id GROUP BY f.id ORDER BY score DESC LIMIT 20").all();
     const tasks=await db.prepare("SELECT task_key,progress,claimed FROM daily_task_progress WHERE user_id=? AND day=?").bind(u.id,utcDay()).all();
     const miners=await db.prepare("SELECT COUNT(*) AS n FROM miners WHERE user_id=?").bind(u.id).first();
