@@ -240,7 +240,7 @@ async function ensureRpgData(db) {
 async function api(request, env, url, tg) {
   const db = env.DB;
   if (!db) return json({ error: "D1 не подключена. Настрой binding DB." }, 500);
-  await ensureNpcData(db);\n  await ensureRpgData(db);
+  await ensureNpcData(db);  await ensureRpgData(db);
   // Backward-compatible D1 migration: older databases may not have faction levels yet.
   try { await db.prepare("ALTER TABLE factions ADD COLUMN level INTEGER NOT NULL DEFAULT 1").run(); }
   catch (e) { if (!String(e?.message || e).toLowerCase().includes("duplicate column")) throw e; }
