@@ -54,9 +54,27 @@ const ITEMS = {
   color_red:{title:"Красный ник",description:"Цвет ника в чате",stars:25,cosmetic:"color"},
   color_blue:{title:"Синий ник",description:"Цвет ника в чате",stars:50,cosmetic:"color"},
   color_orange:{title:"Оранжевый ник",description:"Цвет ника в чате",stars:100,cosmetic:"color"},
-  color_purple:{title:"Фиолетовый ник",description:"Цвет ника в чате",stars:200,cosmetic:"color"}
+  color_purple:{title:"Фиолетовый ник",description:"Цвет ника в чате",stars:200,cosmetic:"color"},
+  title_phoenix:{title:"🦅 ФЕНИКС",description:"Титул в профиле · бонус +2%",stars:75,cosmetic:"title",bonus:2},
+  title_titan:{title:"🗿 ТИТАН",description:"Титул в профиле · бонус +3%",stars:125,cosmetic:"title",bonus:3},
+  title_shadow:{title:"🌑 ПОВЕЛИТЕЛЬ ТЬМЫ",description:"Титул в профиле · бонус +4%",stars:175,cosmetic:"title",bonus:4},
+  title_legend:{title:"🏆 ЖИВАЯ ЛЕГЕНДА",description:"Титул в профиле · бонус +5%",stars:250,cosmetic:"title",bonus:5},
+  title_dragon:{title:"🐉 ДРАКОН XI",description:"Титул в профиле · бонус +6%",stars:300,cosmetic:"title",bonus:6},
+  title_celestial:{title:"✨ НЕБЕСНЫЙ ИЗБРАННИК",description:"Титул в профиле · бонус +7%",stars:375,cosmetic:"title",bonus:7},
+  title_overlord:{title:"☠️ ВЛАДЫКА МИРОВ",description:"Титул в профиле · бонус +8%",stars:450,cosmetic:"title",bonus:8},
+  title_eternal:{title:"♾️ ВЕЧНЫЙ",description:"Титул в профиле · бонус +9%",stars:550,cosmetic:"title",bonus:9},
+  title_supreme:{title:"💠 ВЫСШИЙ",description:"Титул в профиле · бонус +10%",stars:650,cosmetic:"title",bonus:10},
+  title_architect:{title:"🌠 СОЗДАТЕЛЬ ВСЕЛЕННОЙ",description:"Титул в профиле · бонус +12%",stars:800,cosmetic:"title",bonus:12},
+  color_green:{title:"🟢 Зелёный ник",description:"Цвет ника в профиле и чате",stars:35,cosmetic:"color"},
+  color_pink:{title:"💗 Розовый ник",description:"Цвет ника в профиле и чате",stars:60,cosmetic:"color"},
+  color_gold:{title:"🟡 Золотой ник",description:"Цвет ника в профиле и чате",stars:90,cosmetic:"color"},
+  color_cyan:{title:"🩵 Бирюзовый ник",description:"Цвет ника в профиле и чате",stars:110,cosmetic:"color"},
+  color_white:{title:"⚪ Белый ник",description:"Цвет ника в профиле и чате",stars:125,cosmetic:"color"},
+  color_black:{title:"⚫ Графитовый ник",description:"Цвет ника в профиле и чате",stars:140,cosmetic:"color"},
+  color_crimson:{title:"❤️ Алый ник",description:"Цвет ника в профиле и чате",stars:160,cosmetic:"color"},
+  color_neon:{title:"💚 Неоновый ник",description:"Цвет ника в профиле и чате",stars:220,cosmetic:"color"},
 };
-const COSMETIC_COLORS={color_red:"#ff4d4d",color_blue:"#4da3ff",color_orange:"#ff9d42",color_purple:"#bd72ff"};
+const COSMETIC_COLORS={color_red:"#ff4d4d",color_blue:"#4da3ff",color_orange:"#ff9d42",color_purple:"#bd72ff",color_green:"#43d17a",color_pink:"#ff75b8",color_gold:"#ffd34d",color_cyan:"#42d9e8",color_white:"#f2f5fa",color_black:"#8b95a7",color_crimson:"#dc143c",color_neon:"#a3ff12"};
 async function telegram(env, method, payload) {
   const r = await fetch("https://api.telegram.org/bot" + env.BOT_TOKEN + "/" + method, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
@@ -488,7 +506,7 @@ async function api(request, env, url, tg) {
       if (!allowed.includes(key)) return json({error:"Неизвестный ASIC"},400);
       await db.prepare("INSERT INTO miners(user_id,miner_key,last_claim_at) VALUES(?,?,?)").bind(targetUser.id,key,new Date().toISOString()).run();
     } else if (body.action === "grant_cosmetic") {
-      const allowed={title:["title_immortal","title_diamond","title_emperor","title_chaos","title_universe"],color:["color_red","color_blue","color_orange","color_purple"]};
+      const allowed={title:["title_immortal","title_diamond","title_emperor","title_chaos","title_universe","title_phoenix","title_titan","title_shadow","title_legend","title_dragon","title_celestial","title_overlord","title_eternal","title_supreme","title_architect"],color:["color_red","color_blue","color_orange","color_purple","color_green","color_pink","color_gold","color_cyan","color_white","color_black","color_crimson","color_neon"]};
       const type=String(body.cosmeticType||""),key=String(body.cosmetic||"");
       if(!allowed[type]?.includes(key))return json({error:"Неизвестный титул или цвет"},400);
       await db.prepare("INSERT OR IGNORE INTO user_cosmetics(user_id,item_key,item_type,equipped) VALUES(?,?,?,0)").bind(targetUser.id,key,type).run();
