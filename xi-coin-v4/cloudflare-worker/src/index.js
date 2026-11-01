@@ -234,15 +234,30 @@ async function ensureNpcData(db) {
     await postFreshNpcMessage(db,text,{npcId:npc});
   }
 }
+async function ensureRpgData(db) {
+ await db.prepare("CREATE TABLE IF NOT EXISTS rpg_profiles (user_id INTEGER PRIMARY KEY, state_json TEXT NOT NULL DEFAULT '{}', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id))").run();
+}
 async function api(request, env, url, tg) {
   const db = env.DB;
   if (!db) return json({ error: "D1 не подключена. Настрой binding DB." }, 500);
-  await ensureNpcData(db);
+  await ensureNpcData(db);\n  await ensureRpgData(db);
   // Backward-compatible D1 migration: older databases may not have faction levels yet.
   try { await db.prepare("ALTER TABLE factions ADD COLUMN level INTEGER NOT NULL DEFAULT 1").run(); }
   catch (e) { if (!String(e?.message || e).toLowerCase().includes("duplicate column")) throw e; }
   const method = request.method;
   const body = method === "POST" ? await request.json().catch(() => ({})) : {};
+  if (url.pathname === "/api/rpg" && method === "GET") {
+    const u=await getUser(db,tg);
+    const row=await db.prepare("SELECT state_json FROM rpg_profiles WHERE user_id=?").bind(u.id).first();
+    let state={};try{state=JSON.parse(row?.state_json||"{}")}catch(e){}
+    return json({state});
+  }
+  if (url.pathname === "/api/rpg-save" && method === "POST") {
+    const u=await getUser(db,tg);
+    const state={x:Math.max(45,Math.min(675,Number(body.x)||150)),zone:["fields","town","forest"].includes(body.zone)?body.zone:"fields",hp:Math.max(1,Math.min(500,Number(body.hp)||100)),maxHp:Math.max(100,Math.min(500,Number(body.maxHp)||100)),energy:Math.max(0,Math.min(100,Number(body.energy)||0)),maxEnergy:Math.max(50,Math.min(100,Number(body.maxEnergy)||50)),level:Math.max(1,Math.min(100,Math.floor(Number(body.level)||1))),xp:Math.max(0,Math.min(999999,Number(body.xp)||0)),gold:Math.max(0,Math.min(10000000,Number(body.gold)||0)),kills:Math.max(0,Math.min(10000000,Number(body.kills)||0)),enemyHp:Math.max(0,Math.min(10000,Number(body.enemyHp)||35)),enemyMax:Math.max(35,Math.min(10000,Number(body.enemyMax)||35)),enemyX:Math.max(45,Math.min(675,Number(body.enemyX)||520)),power:Math.max(10,Math.min(10000,Number(body.power)||10)),potions:Math.max(0,Math.min(99,Number(body.potions)||0))};
+    await db.prepare("INSERT INTO rpg_profiles(user_id,state_json,updated_at) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET state_json=excluded.state_json,updated_at=excluded.updated_at").bind(u.id,JSON.stringify(state),new Date().toISOString()).run();
+    return json({ok:true,state});
+  }
   if (url.pathname === "/api/me" && method === "GET") {
     let u = await getUser(db, tg, url.searchParams.get("ref"));
     u = await regenerateEnergy(db, u);
