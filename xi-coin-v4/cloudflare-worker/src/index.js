@@ -512,6 +512,8 @@ async function api(request, env, url, tg) {
       await db.prepare("INSERT OR IGNORE INTO user_cosmetics(user_id,item_key,item_type,equipped) VALUES(?,?,?,0)").bind(targetUser.id,key,type).run();
     } else if (body.action === "grant_vip") {
       await db.prepare("UPDATE users SET vip_multiplier=2,max_energy=CASE WHEN vip_multiplier<2 THEN max_energy*2 ELSE max_energy END,energy=CASE WHEN vip_multiplier<2 THEN MIN(max_energy*2,energy*2) ELSE energy END WHERE id=?").bind(targetUser.id).run();
+    } else if (body.action === "grant_pass") {
+      await db.prepare("INSERT INTO pass_progress(user_id,season,xp,claimed_level,premium) VALUES(?,'2026-11',0,0,1) ON CONFLICT(user_id,season) DO UPDATE SET premium=1").bind(targetUser.id).run();
     } else {
       return json({error:"Неизвестное действие"},400);
     }
