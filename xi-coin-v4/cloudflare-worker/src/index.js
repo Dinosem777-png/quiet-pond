@@ -463,6 +463,11 @@ async function api(request, env, url, tg) {
     const users = await db.prepare("SELECT id,tg_id,username,balance,player_level,created_at FROM users ORDER BY id DESC LIMIT 100").all();
     return json({ok:true,users:users.results||[]});
   }
+  if (url.pathname === "/api/admin/clear-chat" && method === "POST") {
+    if (String(tg.id) !== "5599495541") return json({error:"Нет доступа"},403);
+    const result=await db.prepare("DELETE FROM chat_messages").run();
+    return json({ok:true,deleted:result.meta.changes||0});
+  }
   if (url.pathname === "/api/admin/action" && method === "POST") {
     if (String(tg.id) !== "5599495541") return json({error:"Нет доступа"},403);
     const target = String(body.target||"").replace(/^@/,"").trim();
@@ -482,10 +487,17 @@ async function api(request, env, url, tg) {
       const key=String(body.miner||"");
       if (!allowed.includes(key)) return json({error:"Неизвестный ASIC"},400);
       await db.prepare("INSERT INTO miners(user_id,miner_key,last_claim_at) VALUES(?,?,?)").bind(targetUser.id,key,new Date().toISOString()).run();
+    } else if (body.action === "grant_cosmetic") {
+      const allowed={title:["title_immortal","title_diamond","title_emperor","title_chaos","title_universe"],color:["color_red","color_blue","color_orange","color_purple"]};
+      const type=String(body.cosmeticType||""),key=String(body.cosmetic||"");
+      if(!allowed[type]?.includes(key))return json({error:"Неизвестный титул или цвет"},400);
+      await db.prepare("INSERT OR IGNORE INTO user_cosmetics(user_id,item_key,item_type,equipped) VALUES(?,?,?,0)").bind(targetUser.id,key,type).run();
+    } else if (body.action === "grant_vip") {
+      await db.prepare("UPDATE users SET vip_multiplier=2,max_energy=CASE WHEN vip_multiplier<2 THEN max_energy*2 ELSE max_energy END,energy=CASE WHEN vip_multiplier<2 THEN MIN(max_energy*2,energy*2) ELSE energy END WHERE id=?").bind(targetUser.id).run();
     } else {
       return json({error:"Неизвестное действие"},400);
     }
-    const updated=await db.prepare("SELECT id,tg_id,username,balance,player_level FROM users WHERE id=?").bind(targetUser.id).first();
+    const updated=await db.prepare("SELECT id,tg_id,username,balance,player_level,vip_multiplier FROM users WHERE id=?").bind(targetUser.id).first();
     return json({ok:true,user:updated});
   }
   return json({ error: "Not found" }, 404);
