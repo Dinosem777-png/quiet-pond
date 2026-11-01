@@ -151,6 +151,9 @@ async function requireUser(request, env) {
 async function api(request, env, url, tg) {
   const db = env.DB;
   if (!db) return json({ error: "D1 не подключена. Настрой binding DB." }, 500);
+  // Backward-compatible D1 migration: older databases may not have faction levels yet.
+  try { await db.prepare("ALTER TABLE factions ADD COLUMN level INTEGER NOT NULL DEFAULT 1").run(); }
+  catch (e) { if (!String(e?.message || e).toLowerCase().includes("duplicate column")) throw e; }
   const method = request.method;
   const body = method === "POST" ? await request.json().catch(() => ({})) : {};
   if (url.pathname === "/api/me" && method === "GET") {
