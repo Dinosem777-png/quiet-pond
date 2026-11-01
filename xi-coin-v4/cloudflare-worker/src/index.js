@@ -234,7 +234,8 @@ async function api(request, env, url, tg) {
     let adInfo;try{adInfo=await recordAd(db,u,tg.id,day)}catch(e){return json({error:e.message},429)}
     if(!(await issueCoins(db,u.id,1)))return json({error:"Лимит 10 000 000 XI достигнут"},400);
     await bumpTask(db,u.id,"ads",1);
-    return json({user:await db.prepare("SELECT * FROM users WHERE id=?").bind(u.id).first(),reward:1,...adInfo});
+    await db.prepare("INSERT INTO pass_progress(user_id,season,xp,claimed_level,premium) VALUES(?,'2026-11',10,0,0) ON CONFLICT(user_id,season) DO UPDATE SET xp=xp+10").bind(u.id).run();
+    return json({user:await db.prepare("SELECT * FROM users WHERE id=?").bind(u.id).first(),reward:1,passXp:10,...adInfo});
   }
   if(url.pathname==="/api/energy-ad-refill"&&method==="POST"){
     const u=await getUser(db,tg);
@@ -258,8 +259,9 @@ async function api(request, env, url, tg) {
   if (url.pathname === "/api/pass" && method === "GET") {
     const u=await getUser(db,tg),season="2026-11";
     const row=await db.prepare("SELECT xp,claimed_level,premium FROM pass_progress WHERE user_id=? AND season=?").bind(u.id,season).first();
-    const xp=Number(row?.xp||0);
-    return json({season,xp,level:Math.min(30,Math.floor(xp/100)+1),claimedLevel:Number(row?.claimed_level||0),premium:!!Number(row?.premium||0)});
+    const xp=Number(row?.xp||0),today=utcDay();
+    const adsToday=await db.prepare("SELECT COUNT(*) AS n FROM ads WHERE tg_id=? AND day=?").bind(String(tg.id),today).first();
+    return json({season,xp,level:Math.min(30,Math.floor(xp/100)+1),claimedLevel:Number(row?.claimed_level||0),premium:!!Number(row?.premium||0),adsToday:Number(adsToday?.n||0)});
   }
   if (url.pathname === "/api/pass-claim" && method === "POST") {
     const u=await getUser(db,tg),season="2026-11",level=Math.max(1,Math.min(30,Number(body.level)||0));
