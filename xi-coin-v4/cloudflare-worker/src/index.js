@@ -173,12 +173,14 @@ async function ensureNpcData(db) {
   if(Number(count?.n||0)<1000){
     const names=["Alex","Max","Daniel","Mia","Luna","Oliver","Sofia","Leo","Eva","Noah","Nikita","Artem","Dima","Vlad","Mila","Anna","Mark","Liza","Tim","Roman","Ilya","Kate","David","Emma","Kai","Nina","Ivan","Alina","Erik","Zoe"];
     const avatars=["🎮","🚀","🐺","🦊","🐼","🦁","🐸","🐯","🐻","🤖","👾","🐲"];
+    const inserts=[];
     for(let i=Number(count?.n||0);i<1000;i++){
       const name=names[i%names.length]+(i>=names.length?"_"+(Math.floor(i/names.length)+1):"");
       const balance=Number((10+((i*7919)%250000)/100).toFixed(3));
       const level=1+((i*17)%85), power=Number((0.01+((i*37)%1200)/100).toFixed(3));
-      await db.prepare("INSERT OR IGNORE INTO npc_profiles(id,username,avatar,balance,player_level,power,active_hour) VALUES(?,?,?,?,?,?,?)").bind(i+1,name,avatars[i%avatars.length],balance,level,power,(i*7)%24).run();
+      inserts.push(db.prepare("INSERT OR IGNORE INTO npc_profiles(id,username,avatar,balance,player_level,power,active_hour) VALUES(?,?,?,?,?,?,?)").bind(i+1,name,avatars[i%avatars.length],balance,level,power,(i*7)%24));
     }
+    for(let i=0;i<inserts.length;i+=100) await db.batch(inserts.slice(i,i+100));
   }
   const chatCount=await db.prepare("SELECT COUNT(*) AS n FROM npc_chat_messages").first();
   if(!Number(chatCount?.n||0)){
