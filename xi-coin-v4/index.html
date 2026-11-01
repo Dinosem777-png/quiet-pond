@@ -35,23 +35,22 @@ function drawWorld(){
 function drawElder(x,y){ellipse(x,y+13,17,7,"#45634b66");ellipse(x,y-5,13,18,"#a66b9a");ellipse(x,y-27,11,12,"#e8bd91");ctx.fillStyle="#e5e1d2";ctx.beginPath();ctx.arc(x,y-31,12,Math.PI,Math.PI*2);ctx.fill();ctx.fillStyle="#fff0bd";ctx.font="bold 11px system-ui";ctx.textAlign="center";ctx.fillText("СТАРОСТА",x,y-49);ctx.textAlign="left"} 
 function drawMerchant(x,y){ellipse(x,y+13,17,7,"#45634b66");ellipse(x,y-5,13,18,"#477c9a");ellipse(x,y-27,11,12,"#e8bd91");ctx.fillStyle="#6b4932";ctx.beginPath();ctx.arc(x,y-31,12,Math.PI,Math.PI*2);ctx.fill();ctx.fillStyle="#f8e2a5";ctx.font="bold 11px system-ui";ctx.textAlign="center";ctx.fillText("ТОРГОВЕЦ",x,y-49);ctx.textAlign="left"}
 function drawHero(){
- const x=hero.x-cameraX,y=hero.y+Math.sin(hero.walk)*2,dir=hero.face,eq=s.equipment||{},armor=typeof eq.armor==="object"?eq.armor.item:eq.armor||"",weapon=typeof eq.weapon==="object"?eq.weapon.item:eq.weapon||"";const armorColor=/следопыта|редк/i.test(armor)?"#7b6ac6":/понош/i.test(armor)?"#a58a65":"#356d9a",weaponColor=/странника|редк/i.test(weapon)?"#c68cff":"#b7d9e9";
+ const x=hero.x-cameraX,y=hero.y+Math.sin(hero.walk)*2,dir=hero.face,eq=s.equipment||{};
+ const item=k=>typeof eq[k]==="object"?eq[k].item:eq[k]||"";
+ const rare=v=>/странника|следопыта|стража|дуэлянта|ветра|редк/i.test(v);
+ const armor=item("armor"),weapon=item("weapon"),helm=item("helmet"),boots=item("boots"),gloves=item("gloves");
+ const ac=rare(armor)?"#7663c6":"#356d9a",wc=rare(weapon)?"#d5a2ff":"#c8e5f0";
  ellipse(x,y+22,18,6,"#203a3c77");ctx.save();ctx.translate(x,y);ctx.scale(dir,1);
- // legs with running animation
  const step=Math.sin(hero.walk)*5;
- ctx.strokeStyle="#493c39";ctx.lineWidth=7;ctx.lineCap="round";
- ctx.beginPath();ctx.moveTo(-5,10);ctx.lineTo(-7+step,25);ctx.moveTo(5,10);ctx.lineTo(7-step,25);ctx.stroke();
- // boots
- ctx.strokeStyle="#b78a53";ctx.lineWidth=8;ctx.beginPath();ctx.moveTo(-7+step,25);ctx.lineTo(-1+step,26);ctx.moveTo(7-step,25);ctx.lineTo(13-step,26);ctx.stroke();
- // torso and armor
- ellipse(0,-1,13,19,armorColor);ctx.fillStyle="#d9c18a";ctx.fillRect(-11,-8,22,5);ctx.fillStyle="#a94e3e";ctx.fillRect(-12,2,24,5);
- // head, hair, face
+ ctx.strokeStyle="#493c39";ctx.lineWidth=7;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(-5,10);ctx.lineTo(-7+step,25);ctx.moveTo(5,10);ctx.lineTo(7-step,25);ctx.stroke();
+ ctx.strokeStyle=rare(boots)?"#c2a4ec":"#b78a53";ctx.lineWidth=9;ctx.beginPath();ctx.moveTo(-7+step,24);ctx.lineTo(-1+step,26);ctx.moveTo(7-step,24);ctx.lineTo(13-step,26);ctx.stroke();
+ ellipse(0,-1,13,19,ac);ctx.fillStyle=rare(armor)?"#e6d1ff":"#d9c18a";ctx.fillRect(-11,-8,22,5);ctx.fillStyle="#263e57";ctx.fillRect(-3,-9,6,18);
+ ellipse(-11,-10,7,7,rare(armor)?"#b99be9":"#a7b9c2");ellipse(11,-10,7,7,rare(armor)?"#b99be9":"#a7b9c2");
+ ctx.strokeStyle=rare(gloves)?"#c5a6f0":"#b88b64";ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(8,-8);ctx.lineTo(15,-1);ctx.stroke();
  ellipse(0,-24,11,13,"#f0bd91");ctx.fillStyle="#513629";ctx.beginPath();ctx.arc(0,-27,12,Math.PI,Math.PI*2);ctx.fill();
- ctx.fillStyle="#f8df9b";ctx.fillRect(-8,-38,16,4);
- // arm and sword
- ctx.strokeStyle="#f0bd91";ctx.lineWidth=6;ctx.beginPath();ctx.moveTo(7,-8);ctx.lineTo(15,-1);ctx.stroke();
- ctx.strokeStyle=weaponColor;ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(15,-2);ctx.lineTo(23,-27);ctx.stroke();ctx.strokeStyle="#8d623e";ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(11,0);ctx.lineTo(18,-3);ctx.stroke();
- if(hero.attack>0){ctx.strokeStyle="#fff1a1";ctx.lineWidth=6;ctx.beginPath();ctx.arc(16,-9,35,-1.2,.8);ctx.stroke()}
+ if(helm){ctx.fillStyle=rare(helm)?"#b69be8":"#9daeb5";ctx.beginPath();ctx.arc(0,-29,13,Math.PI,Math.PI*2);ctx.lineTo(13,-25);ctx.lineTo(-13,-25);ctx.fill();ctx.fillStyle="#f4d58c";ctx.fillRect(-7,-30,14,3)}else{ctx.fillStyle="#f8df9b";ctx.fillRect(-8,-38,16,4)}
+ ctx.strokeStyle="#815b3e";ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(11,0);ctx.lineTo(18,-3);ctx.stroke();ctx.strokeStyle=wc;ctx.lineWidth=rare(weapon)?5:4;ctx.beginPath();ctx.moveTo(16,-3);ctx.lineTo(25,-30);ctx.stroke();
+ if(hero.attack>0){ctx.strokeStyle=rare(weapon)?"#d9a5ff":"#fff1a1";ctx.lineWidth=6;ctx.beginPath();ctx.arc(17,-10,37,-1.2,.8);ctx.stroke()}
  ctx.restore()
 }
 function drawMob(m){
