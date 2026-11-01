@@ -166,6 +166,42 @@ async function requireUser(request, env) {
   const initData = auth.replace(/^tma\s+/i, "");
   return await verifyTelegram(initData, env.BOT_TOKEN);
 }
+const NPC_CHAT_TOPICS = {
+  hello:["Всем привет! Как настроение?","О, знакомые лица 🙂 Всем удачи сегодня!","Привет народ, как идёт прокачка?","Заглянул на минутку, всем хорошей игры!","Добрый вечер! Что нового в Xi Coin?","Всем салют! Кто сегодня активно играет?"],
+  game:["Пока коплю XI и не тороплюсь тратить всё сразу.","Я сначала прокачиваю клики, потом уже думаю об улучшениях.","Мне нравится постепенно развивать аккаунт.","Сегодня решил заняться фермой, давно откладывал.","Проверяю задания и ежедневный бонус, мелочь тоже полезна.","Главное — регулярно заходить и не забывать забирать добычу.","Пока сравниваю варианты, куда выгоднее вложить XI.","Поставил себе цель поднять уровень на этой неделе."],
+  mining:["ASIC приносит доход, даже когда игру не открываешь — главное забирать накопленное.","Я бы сначала посмотрел на цену майнера и его доход в час.","Ферму лучше улучшать постепенно, чтобы не остаться без запаса XI.","Не забывай забирать накопленную добычу, она не бесконечно копится.","Сравнивай доходность улучшения с покупкой ещё одного ASIC.","Мне нравится наблюдать, как растёт доход фермы ⛏️","Пока коплю на следующий майнер, дорогие уровни требуют терпения.","Проверь раздел ASIC — там видно текущую добычу."],
+  level:["Уровень растёт от опыта, продолжай играть и выполнять задания.","Я тоже постепенно поднимаю уровень, не сразу всё получается.","Посмотри прогресс уровня в главном окне — там полоса опыта.","Чем выше уровень, тем приятнее бонусы. Двигаемся дальше!"],
+  ads:["За рекламные задания можно получить дополнительные игровые бонусы.","Если реклама не загрузилась, попробуй чуть позже — иногда провайдер тормозит.","Проверь счётчик просмотров в разделе заработка.","Я обычно сначала смотрю условия задания, а потом запускаю рекламу."],
+  community:["В общине веселее, можно вместе развиваться.","Посмотри список общин в соответствующем разделе, может найдёшь подходящую.","Хорошая община — это активные участники и общие цели.","Я пока выбираю общину, хочется найти активную."],
+  help:["Уточни, что именно не получается — попробуем разобраться.","Открой нужный раздел и посмотри подсказку под названием, там часто есть детали.","Если что-то не работает, перезагрузка Mini App иногда помогает.","Напиши чуть подробнее, какой экран или кнопка вызывает проблему."],
+  general:["Хороший вопрос! Я бы сначала проверил условия в самом разделе игры.","Интересно, сам хотел это проверить.","Пожалуй, стоит сравнить оба варианта, прежде чем решать.","Понял тебя 🙂 Посмотрим, что будет дальше.","Согласен, интерфейс должен быть понятным.","А ты давно играешь? Я тут периодически заглядываю.","У каждого своя стратегия, интересно читать разные мнения.","Спасибо, что поделился!"]
+};
+const NPC_OPENERS=["Кстати, ","Если честно, ","По моему опыту, ","Мне кажется, ","Да, и ещё ","К слову, ","Я заметил, что "];
+const NPC_ENDINGS=[" 🙂"," 🚀"," ⛏️"," Удачи!"," 💪","", " Главное — не спешить."," Как у тебя с этим?"];
+function makeNpcReply(message) {
+  const q=String(message||"").toLowerCase();
+  let key="general";
+  if(/привет|здравств|доброе утро|добрый вечер|салют/.test(q)) key="hello";
+  else if(/asic|майн|ферм|добыч|доход|час|купить майнер/.test(q)) key="mining";
+  else if(/уров|опыт|xp|прокач/.test(q)) key="level";
+  else if(/реклам|просмотр|adsgram/.test(q)) key="ads";
+  else if(/общин|фракц|команд/.test(q)) key="community";
+  else if(/как|почему|зачем|где|что делать|помог|не работает|ошибк|вопрос|подскаж/.test(q)) key="help";
+  else if(/игр|xi coin|баланс|клик|задани|бонус/.test(q)) key="game";
+  const list=NPC_CHAT_TOPICS[key];
+  const base=list[Math.floor(Math.random()*list.length)];
+  return Math.random()<0.55 ? NPC_OPENERS[Math.floor(Math.random()*NPC_OPENERS.length)]+base.charAt(0).toLowerCase()+base.slice(1) : base+NPC_ENDINGS[Math.floor(Math.random()*NPC_ENDINGS.length)];
+}
+async function postFreshNpcMessage(db, message, options={}) {
+  const recent=await db.prepare("SELECT message FROM npc_chat_messages ORDER BY id DESC LIMIT 100").all();
+  const used=new Set((recent.results||[]).map(x=>String(x.message).toLowerCase()));
+  const text=String(message||"").trim();
+  if(!text || used.has(text.toLowerCase())) return false;
+  const npc=options.npcId || (1+Math.floor(Math.random()*1000));
+  await db.prepare("INSERT INTO npc_chat_messages(npc_id,message,created_at) VALUES(?,?,?)")
+    .bind(npc,text,new Date().toISOString()).run();
+  return true;
+}
 async function ensureNpcData(db) {
   await db.prepare("CREATE TABLE IF NOT EXISTS npc_profiles (id INTEGER PRIMARY KEY, username TEXT NOT NULL, avatar TEXT NOT NULL, balance REAL NOT NULL, player_level INTEGER NOT NULL, power REAL NOT NULL, active_hour INTEGER NOT NULL)").run();
   await db.prepare("CREATE TABLE IF NOT EXISTS npc_chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, npc_id INTEGER NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
@@ -184,15 +220,18 @@ async function ensureNpcData(db) {
   }
   const chatCount=await db.prepare("SELECT COUNT(*) AS n FROM npc_chat_messages").first();
   if(!Number(chatCount?.n||0)){
-    const lines=["Кто сегодня уже собрал майнинг?","Всем привет! Как успехи?","Наконец-то улучшил свою ферму 🚀","Коплю на новый ASIC.","Какой у вас сейчас уровень?","Удачи всем в игре!","Сегодня хороший день для Xi Coin 🙂","Зашёл проверить ежедневный бонус.","Кто-нибудь состоит в общине?","Постепенно развиваю аккаунт."];
-    for(let i=0;i<30;i++) await db.prepare("INSERT INTO npc_chat_messages(npc_id,message,created_at) VALUES(?,?,datetime('now',?))").bind((i*31)%1000+1,lines[i%lines.length],"-"+(30-i)*7+" minutes").run();
+    for(let i=0;i<24;i++){
+      const text=makeNpcReply(["Как дела в игре?","Кто уже улучшил ферму?","Всем привет!","Как быстрее поднять уровень?"][i%4]);
+      await postFreshNpcMessage(db,text,{npcId:1+((i*37)%1000)});
+    }
   }
   const latest=await db.prepare("SELECT created_at FROM npc_chat_messages ORDER BY id DESC LIMIT 1").first();
-  if(latest && Date.now()-Date.parse(String(latest.created_at).replace(" ","T")+"Z")>8*60*1000){
-    const n=await db.prepare("SELECT COUNT(*) AS n FROM npc_chat_messages").first();
-    const npc=1+((Number(n?.n||0)*73)%1000);
-    const lines=["Как вам обновление?","Пора прокачать ферму ⛏️","Всем хорошего вечера!","Проверяю рейтинг игроков.","Потихоньку растём 💪","У кого какие планы на сегодня?","Забрал награду и продолжаю играть."];
-    await db.prepare("INSERT INTO npc_chat_messages(npc_id,message) VALUES(?,?)").bind(npc,lines[Number(n?.n||0)%lines.length]).run();
+  const lastTime=latest?.created_at ? Date.parse(String(latest.created_at).replace(" ","T")+(String(latest.created_at).includes("Z")?"":"Z")) : 0;
+  if(!lastTime || Date.now()-lastTime>3*60*1000){
+    const countNow=await db.prepare("SELECT COUNT(*) AS n FROM npc_chat_messages").first();
+    const npc=1+((Number(countNow?.n||0)*73)%1000);
+    const text=makeNpcReply(["Как вам игра сегодня?","Кто-нибудь улучшал ASIC?","Что сейчас прокачиваете?","Есть вопросы по игре?"][Number(countNow?.n||0)%4]);
+    await postFreshNpcMessage(db,text,{npcId:npc});
   }
 }
 async function api(request, env, url, tg) {
@@ -503,6 +542,18 @@ async function api(request, env, url, tg) {
     const u=await getUser(db,tg); const message=String(body.message||"").trim();
     if(!message||message.length>300) return json({error:"Сообщение: до 300 символов"},400);
     await db.prepare("INSERT INTO chat_messages(user_id,username,message) VALUES(?,?,?)").bind(u.id,u.username||"Игрок",message).run();
+    // VIP — это игровые NPC, а не реальные пользователи. Иногда они отвечают на сообщения игроков.
+    const isQuestion=/[?？]|как|почему|зачем|где|что делать|помог|не работает|ошибк|подскаж/i.test(message);
+    const replyChance=isQuestion?0.72:0.22;
+    if(Math.random()<replyChance){
+      const reply=makeNpcReply(message);
+      const recent=await db.prepare("SELECT message FROM npc_chat_messages ORDER BY id DESC LIMIT 100").all();
+      const recentTexts=new Set((recent.results||[]).map(x=>String(x.message).toLowerCase()));
+      if(!recentTexts.has(reply.toLowerCase())){
+        const npc=1+Math.floor(Math.random()*1000);
+        await db.prepare("INSERT INTO npc_chat_messages(npc_id,message,created_at) VALUES(?,?,?)").bind(npc,reply,new Date().toISOString()).run();
+      }
+    }
     return json({ok:true});
   }
 
