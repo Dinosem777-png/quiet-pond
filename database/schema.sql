@@ -14,3 +14,11 @@ CREATE TABLE IF NOT EXISTS orders (
  INDEX idx_user_created (telegram_id,created_at),
  INDEX idx_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS daily_free_uses (
+ id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ telegram_id BIGINT NOT NULL,
+ use_date DATE NOT NULL,
+ created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ UNIQUE KEY uniq_user_day (telegram_id,use_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
