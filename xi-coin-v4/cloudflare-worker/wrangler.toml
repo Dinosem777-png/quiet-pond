@@ -1,8 +1,0 @@
-name = "xi-coin-db"
-main = "src/index.js"
-compatibility_date = "2026-10-31"
-
-[[d1_databases]]
-binding = "DB"
-database_name = "xi-coin-db"
-database_id = "1a596764-a145-4656-9bb8-17ebe2d5579c"
